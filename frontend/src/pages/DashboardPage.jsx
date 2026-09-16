@@ -44,6 +44,22 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
   const { user, isSdm, userRole } = useAuth();
   const { showToast } = useToast();
 
+  const [periodType, setPeriodType] = useState(() => {
+    return localStorage.getItem('hrportal_period_type') || globalPeriodType || 'calendar';
+  });
+
+  useEffect(() => {
+    if (globalPeriodType) {
+      setPeriodType(globalPeriodType);
+    }
+  }, [globalPeriodType]);
+
+  const handlePeriodChange = (newType) => {
+    setPeriodType(newType);
+    localStorage.setItem('hrportal_period_type', newType);
+    if (onPeriodTypeChange) onPeriodTypeChange(newType);
+  };
+
   // --- Real-Time Digital Clock ---
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
@@ -489,65 +505,13 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
   }, [userRole]);
 
   // --- Helper Date Range Filter ---
-  const isDateInPeriod = (dateInput) => {
-    if (!dateInput) return false;
-    const itemDate = new Date(dateInput);
-    if (isNaN(itemDate.getTime())) return false;
-
-    if (globalPeriodType === 'calendar') {
-      return itemDate.getMonth() + 1 === selectedMonth && itemDate.getFullYear() === selectedYear;
-    } else {
-      let prevMonth = selectedMonth - 1;
-      let prevYear = selectedYear;
-      if (prevMonth === 0) {
-        prevMonth = 12;
-        prevYear = selectedYear - 1;
-      }
-      const startDate = new Date(prevYear, prevMonth - 1, 16);
-      const endDate = new Date(selectedYear, selectedMonth - 1, 15, 23, 59, 59);
-      return itemDate >= startDate && itemDate <= endDate;
-    }
-  };
-
-  // --- Stat Metrics ---
-  const filteredAttendance = attendanceHistory.filter((item) => {
-    const d = item.tanggal || (item.absen_masuk ? getLocalDateStr(item.absen_masuk) : '');
-    return isDateInPeriod(d);
-  });
-
-  const totalAbsen = filteredAttendance.filter((item) => {
-    const checkIn = item.absen_masuk || item.check_in;
-    return !!(checkIn && checkIn !== '-' && checkIn !== '');
-  }).length;
-
-  const totalCutiTerima = cutiList.filter((item) => {
-    const d = item.tanggal_mulai || item.created_at;
-    const isApproved = (item.status || '').toLowerCase().includes('terima sdm') || (item.status || '').toLowerCase().includes('disetujui');
-    return isApproved && isDateInPeriod(d);
-  }).length;
-
-  const totalIzinTerima = izinList.filter((item) => {
-    const d = item.tanggal_pengajuan || item.tanggal || item.created_at;
-    const isApproved = (item.status || '').toLowerCase().includes('terima sdm') || (item.status || '').toLowerCase().includes('disetujui');
-    return isApproved && isDateInPeriod(d);
-  }).length;
-
-  const totalSppdTerima = sppdList.filter((item) => {
-    const d = item.tanggal_berangkat || item.created_at;
-    const isApproved = (item.status || '').toLowerCase().includes('terima sdm') || (item.status || '').toLowerCase().includes('disetujui');
-    return isApproved && isDateInPeriod(d);
-  }).length;
-
-  const totalUpacara = filteredAttendance.filter((item) => {
-    return (item.note || item.alasan || item.type || '').toLowerCase().includes('upacara');
-  }).length;
-
-  // Compute exact elapsed period date range & past libur / tidak masuk (alpha) count
-  const getPeriodRange = () => {
+  const getPeriodDates = useCallback(() => {
     const pad = (n) => String(n).padStart(2, '0');
-    if (globalPeriodType === 'calendar') {
+    if (periodType === 'calendar') {
       const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
       return {
+        startStr: `${selectedYear}-${pad(selectedMonth)}-01`,
+        endStr: `${selectedYear}-${pad(selectedMonth)}-${pad(lastDay)}`,
         startDate: new Date(`${selectedYear}-${pad(selectedMonth)}-01T00:00:00`),
         endDate: new Date(`${selectedYear}-${pad(selectedMonth)}-${pad(lastDay)}T23:59:59`),
       };
@@ -559,22 +523,32 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
         prevYear = selectedYear - 1;
       }
       return {
+        startStr: `${prevYear}-${pad(prevMonth)}-16`,
+        endStr: `${selectedYear}-${pad(selectedMonth)}-15`,
         startDate: new Date(`${prevYear}-${pad(prevMonth)}-16T00:00:00`),
         endDate: new Date(`${selectedYear}-${pad(selectedMonth)}-15T23:59:59`),
       };
     }
-  };
+  }, [periodType, selectedMonth, selectedYear]);
 
-  const { startDate, endDate } = getPeriodRange();
+  const isDateInPeriod = useCallback((dateInput) => {
+    if (!dateInput) return false;
+    const dStr = getLocalDateStr(dateInput);
+    if (!dStr) return false;
+    const { startStr, endStr } = getPeriodDates();
+    return dStr >= startStr && dStr <= endStr;
+  }, [getPeriodDates]);
 
-  // Set today bounds at midnight
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Build sets & maps for fast lookup
+  const holidayMap = useMemo(() => {
+    const map = new Map();
+    holidayList.forEach((h) => {
+      const d = h.tanggal ? getLocalDateStr(h.tanggal) : '';
+      if (d) map.set(d, h);
+    });
+    return map;
+  }, [holidayList]);
 
-  // Evaluate elapsed days ONLY up to today (do not mark future days as libur or tidak masuk!)
-  const evalEndDate = endDate < today ? endDate : today;
-
-  // Build sets for fast lookup
   const holidayDateSet = useMemo(() => {
     const set = new Set();
     holidayList.forEach((h) => {
@@ -582,6 +556,22 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
     });
     return set;
   }, [holidayList]);
+
+  const attendanceMap = useMemo(() => {
+    const map = new Map();
+    attendanceHistory.forEach((a) => {
+      const d = a.tanggal || (a.absen_masuk ? getLocalDateStr(a.absen_masuk) : '');
+      if (d) {
+        const existing = map.get(d);
+        const checkIn = a.absen_masuk || a.check_in;
+        const hasCheckIn = !!(checkIn && checkIn !== '-' && checkIn !== '');
+        if (!existing || hasCheckIn) {
+          map.set(d, a);
+        }
+      }
+    });
+    return map;
+  }, [attendanceHistory]);
 
   const attendanceDateSet = useMemo(() => {
     const set = new Set();
@@ -595,35 +585,298 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
     return set;
   }, [attendanceHistory]);
 
-  // Count past libur (holidays occurring up to today) and past tidak masuk (elapsed workdays with no attendance)
-  let totalLibur = 0;
-  let totalTidakMasuk = 0;
-
-  if (startDate <= evalEndDate) {
-    const curr = new Date(startDate);
-    while (curr <= evalEndDate) {
-      const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-      const isSunday = curr.getDay() === 0;
-      const isHoliday = holidayDateSet.has(dStr);
-
-      if(isSunday){
-        console.log(`${dStr} = isSunday`)
-      }
-
-      if (!isSunday && isHoliday) {
-        totalLibur++;
-        console.log(`${dStr} = isHoliday`)
-      } else if(!isSunday && !isHoliday){
-        const hasAttended = attendanceDateSet.has(dStr);
-        if (!hasAttended) {
-          totalTidakMasuk++;
-          console.log(`${dStr} = !hasAttended`)
+  // Approved leave / permit / official travel lookup maps
+  const approvedCutiMap = useMemo(() => {
+    const map = new Map();
+    cutiList.forEach((item) => {
+      const status = (item.status || '').toLowerCase();
+      const isApproved = status.includes('terima sdm') || status.includes('disetujui');
+      if (!isApproved) return;
+      const start = item.tanggal_mulai ? getLocalDateStr(item.tanggal_mulai) : '';
+      const end = (item.tanggal_selesai || item.tanggal_akhir || item.tanggal_mulai) 
+        ? getLocalDateStr(item.tanggal_selesai || item.tanggal_akhir || item.tanggal_mulai) 
+        : start;
+      if (start) {
+        let curr = new Date(start + 'T00:00:00');
+        const endObj = new Date((end || start) + 'T00:00:00');
+        while (curr <= endObj) {
+          map.set(getLocalDateStr(curr), item);
+          curr.setDate(curr.getDate() + 1);
         }
       }
+    });
+    return map;
+  }, [cutiList]);
 
-      curr.setDate(curr.getDate() + 1);
+  const approvedIzinMap = useMemo(() => {
+    const map = new Map();
+    izinList.forEach((item) => {
+      const status = (item.status || '').toLowerCase();
+      const isApproved = status.includes('terima sdm') || status.includes('disetujui');
+      if (!isApproved) return;
+      const d = item.tanggal_pengajuan || item.tanggal || item.created_at;
+      if (d) map.set(getLocalDateStr(d), item);
+    });
+    return map;
+  }, [izinList]);
+
+  const approvedSppdMap = useMemo(() => {
+    const map = new Map();
+    sppdList.forEach((item) => {
+      const status = (item.status || '').toLowerCase();
+      const isApproved = status.includes('terima sdm') || status.includes('disetujui');
+      if (!isApproved) return;
+      const start = item.tanggal_berangkat ? getLocalDateStr(item.tanggal_berangkat) : '';
+      const end = item.tanggal_kembali ? getLocalDateStr(item.tanggal_kembali) : start;
+      if (start) {
+        let curr = new Date(start + 'T00:00:00');
+        const endObj = new Date((end || start) + 'T00:00:00');
+        while (curr <= endObj) {
+          map.set(getLocalDateStr(curr), item);
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+    });
+    return map;
+  }, [sppdList]);
+
+  // --- Full History List Generation: All dates in period appear (Goal 1) ---
+  const fullHistoryList = useMemo(() => {
+    const { startStr, endStr } = getPeriodDates();
+    const todayStr = getLocalDateStr();
+
+    // Determine latest date to include: today if within period, or period end if in the past
+    let maxDateStr = endStr < todayStr ? endStr : todayStr;
+
+    // Check if there are any attendance or leave records beyond today within the period
+    attendanceHistory.forEach((a) => {
+      const d = a.tanggal || (a.absen_masuk ? getLocalDateStr(a.absen_masuk) : '');
+      if (d && d >= startStr && d <= endStr && d > maxDateStr) {
+        maxDateStr = d;
+      }
+    });
+
+    if (startStr > maxDateStr) {
+      return [];
     }
-  }
+
+    const rows = [];
+    let curr = new Date(maxDateStr + 'T00:00:00');
+    const startObj = new Date(startStr + 'T00:00:00');
+
+    while (curr >= startObj) {
+      const dStr = getLocalDateStr(curr);
+      const isSunday = curr.getDay() === 0;
+      const holiday = holidayMap.get(dStr);
+      const isHoliday = !!holiday;
+      const att = attendanceMap.get(dStr);
+
+      const checkIn = att?.absen_masuk || att?.check_in;
+      const checkOut = att?.absen_keluar || att?.check_out;
+      const hasMasuk = !!(checkIn && checkIn !== '-' && checkIn !== '');
+      const hasKeluar = !!(checkOut && checkOut !== '-' && checkOut !== '');
+
+      const cuti = approvedCutiMap.get(dStr);
+      const izin = approvedIzinMap.get(dStr);
+      const sppd = approvedSppdMap.get(dStr);
+
+      if (hasMasuk || hasKeluar) {
+        // Actual attendance record
+        const rawStatus = (att?.status || att?.type || att?.note || '').toLowerCase();
+        const txtCatatanTelat = att?.catatan_telat || att?.alasan_telat || '-';
+        const txtCatatanPulang = att?.catatan_pulang || att?.alasan_pulang || '-';
+
+        let statusText = 'Hadir';
+        if ((txtCatatanTelat && txtCatatanTelat !== '-') || rawStatus.includes('telat') || rawStatus.includes('terlambat')) {
+          statusText = 'Terlambat';
+        } else if ((txtCatatanPulang && txtCatatanPulang !== '-') || rawStatus.includes('pulang cepat')) {
+          statusText = 'Pulang Cepat';
+        }
+
+        rows.push({
+          ...att,
+          tanggal: dStr,
+          absen_masuk: checkIn || '-',
+          absen_keluar: checkOut || '-',
+          catatan_telat: txtCatatanTelat,
+          catatan_pulang: txtCatatanPulang,
+          status: statusText,
+          isGenerated: false,
+        });
+      } else if (cuti) {
+        rows.push({
+          tanggal: dStr,
+          absen_masuk: '-',
+          absen_keluar: '-',
+          catatan_telat: '-',
+          catatan_pulang: '-',
+          status: 'Cuti',
+          note: cuti.alasan || cuti.jenis_cuti || 'Cuti Disetujui',
+          isGenerated: true,
+        });
+      } else if (izin) {
+        rows.push({
+          tanggal: dStr,
+          absen_masuk: '-',
+          absen_keluar: '-',
+          catatan_telat: '-',
+          catatan_pulang: '-',
+          status: 'Izin',
+          note: izin.tujuan || izin.alasan || 'Izin Disetujui',
+          isGenerated: true,
+        });
+      } else if (sppd) {
+        rows.push({
+          tanggal: dStr,
+          absen_masuk: '-',
+          absen_keluar: '-',
+          catatan_telat: '-',
+          catatan_pulang: '-',
+          status: 'SPPD',
+          note: sppd.maksud_perjalanan || 'Dinas Luar SPPD',
+          isGenerated: true,
+        });
+      } else if (isSunday) {
+        rows.push({
+          tanggal: dStr,
+          absen_masuk: '-',
+          absen_keluar: '-',
+          catatan_telat: '-',
+          catatan_pulang: '-',
+          status: 'Hari Minggu',
+          isGenerated: true,
+        });
+      } else if (isHoliday) {
+        rows.push({
+          tanggal: dStr,
+          absen_masuk: '-',
+          absen_keluar: '-',
+          catatan_telat: '-',
+          catatan_pulang: '-',
+          status: 'Libur',
+          note: holiday.nama || holiday.keterangan || 'Libur Nasional',
+          isGenerated: true,
+        });
+      } else {
+        // Normal workday (Monday - Saturday) without attendance
+        rows.push({
+          tanggal: dStr,
+          absen_masuk: '-',
+          absen_keluar: '-',
+          catatan_telat: '-',
+          catatan_pulang: '-',
+          status: 'Tidak Masuk',
+          isGenerated: true,
+        });
+      }
+
+      curr.setDate(curr.getDate() - 1);
+    }
+
+    return rows;
+  }, [
+    getPeriodDates,
+    attendanceHistory,
+    attendanceMap,
+    holidayMap,
+    approvedCutiMap,
+    approvedIzinMap,
+    approvedSppdMap,
+  ]);
+
+  // --- Metrics strictly derived from the evaluated period & full history (Goal 2) ---
+  const totalAbsen = useMemo(() => {
+    return fullHistoryList.filter((item) => {
+      const checkIn = item.absen_masuk;
+      return checkIn && checkIn !== '-' && checkIn !== '';
+    }).length;
+  }, [fullHistoryList]);
+
+  const totalTidakMasuk = useMemo(() => {
+    return fullHistoryList.filter((item) => item.status === 'Tidak Masuk').length;
+  }, [fullHistoryList]);
+
+  const totalLibur = useMemo(() => {
+    const { startStr, endStr } = getPeriodDates();
+    const todayStr = getLocalDateStr();
+    const evalEndStr = endStr < todayStr ? endStr : todayStr;
+
+    let count = 0;
+    holidayMap.forEach((h, dStr) => {
+      if (dStr >= startStr && dStr <= evalEndStr) {
+        const dObj = new Date(dStr + 'T00:00:00');
+        if (dObj.getDay() !== 0) {
+          count++;
+        }
+      }
+    });
+    return count;
+  }, [getPeriodDates, holidayMap]);
+
+  const totalCutiTerima = useMemo(() => {
+    return cutiList.filter((item) => {
+      const d = item.tanggal_mulai || item.created_at;
+      const isApproved = (item.status || '').toLowerCase().includes('terima sdm') || (item.status || '').toLowerCase().includes('disetujui');
+      return isApproved && isDateInPeriod(d);
+    }).length;
+  }, [cutiList, isDateInPeriod]);
+
+  const totalIzinTerima = useMemo(() => {
+    return izinList.filter((item) => {
+      const d = item.tanggal_pengajuan || item.tanggal || item.created_at;
+      const isApproved = (item.status || '').toLowerCase().includes('terima sdm') || (item.status || '').toLowerCase().includes('disetujui');
+      return isApproved && isDateInPeriod(d);
+    }).length;
+  }, [izinList, isDateInPeriod]);
+
+  const totalSppdTerima = useMemo(() => {
+    return sppdList.filter((item) => {
+      const d = item.tanggal_berangkat || item.created_at;
+      const isApproved = (item.status || '').toLowerCase().includes('terima sdm') || (item.status || '').toLowerCase().includes('disetujui');
+      return isApproved && isDateInPeriod(d);
+    }).length;
+  }, [sppdList, isDateInPeriod]);
+
+  const totalUpacara = useMemo(() => {
+    return attendanceHistory.filter((item) => {
+      const d = item.tanggal || (item.absen_masuk ? getLocalDateStr(item.absen_masuk) : '');
+      const isUpacara = (item.note || item.alasan || item.type || '').toLowerCase().includes('upacara');
+      return isUpacara && isDateInPeriod(d);
+    }).length;
+  }, [attendanceHistory, isDateInPeriod]);
+
+  // Debug Log for Inspection (ensures all dates up to today are logged, including hasAttended on 16)
+  useEffect(() => {
+    const { startStr, endStr } = getPeriodDates();
+    const todayStr = getLocalDateStr();
+    const evalEndStr = endStr < todayStr ? endStr : todayStr;
+
+    if (startStr <= evalEndStr) {
+      let curr = new Date(startStr + 'T00:00:00');
+      const endObj = new Date(evalEndStr + 'T00:00:00');
+
+      while (curr <= endObj) {
+        const dStr = getLocalDateStr(curr);
+        const isSunday = curr.getDay() === 0;
+        const isHoliday = holidayMap.has(dStr);
+        const att = attendanceMap.get(dStr);
+        const checkIn = att?.absen_masuk || att?.check_in;
+        const hasAttended = !!(checkIn && checkIn !== '-' && checkIn !== '');
+
+        if (isSunday) {
+          console.log(`${dStr} = isSunday`);
+        } else if (isHoliday) {
+          console.log(`${dStr} = isHoliday${hasAttended ? ' (hasAttended)' : ''}`);
+        } else if (!hasAttended) {
+          console.log(`${dStr} = !hasAttended`);
+        } else {
+          console.log(`${dStr} = hasAttended`);
+        }
+
+        curr.setDate(curr.getDate() + 1);
+      }
+    }
+  }, [getPeriodDates, holidayMap, attendanceMap]);
 
   // Memo to check if there are any unfilled active questionnaires
   const hasUnfilledKuesioner = useMemo(() => {
@@ -743,14 +996,17 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
   };
 
   // Filter Table Results
-  const filteredAttendanceHistory = filteredAttendance.filter((item) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    const d = item.tanggal || (item.absen_masuk ? getLocalDateStr(item.absen_masuk) : '');
-    const matchNote = (item.catatan_telat || item.catatan_pulang || item.alasan_telat || item.alasan_pulang || '').toLowerCase().includes(q);
-    const matchDate = d.includes(q) || formatIndonesianDate(d).toLowerCase().includes(q);
-    return matchNote || matchDate;
-  });
+  const filteredAttendanceHistory = useMemo(() => {
+    return fullHistoryList.filter((item) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      const d = item.tanggal || (item.absen_masuk ? getLocalDateStr(item.absen_masuk) : '');
+      const matchNote = (item.catatan_telat || item.catatan_pulang || item.alasan_telat || item.alasan_pulang || item.note || '').toLowerCase().includes(q);
+      const matchDate = d.includes(q) || formatIndonesianDate(d).toLowerCase().includes(q);
+      const matchStatus = (item.status || '').toLowerCase().includes(q);
+      return matchNote || matchDate || matchStatus;
+    });
+  }, [fullHistoryList, searchQuery]);
 
   const renderStatusBadge = (item) => {
     const checkIn = item.absen_masuk || item.check_in;
@@ -769,6 +1025,9 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
     }
     if (rawStatus.includes('sppd')) {
       return <Badge variant="info">SPPD</Badge>;
+    }
+    if (rawStatus.includes('minggu')) {
+      return <Badge variant="secondary">Hari Minggu</Badge>;
     }
     if (rawStatus.includes('libur')) {
       return <Badge variant="secondary">Libur</Badge>;
@@ -1357,7 +1616,7 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-              Riwayat Presensi ({globalPeriodType === 'cutoff' ? 'Cutoff 16-15' : 'Bulan 01-31'})
+              Riwayat Presensi ({periodType === 'cutoff' ? 'Cutoff 16-15' : 'Bulan 01-31'})
             </h2>
             <p style={{ fontSize: '0.825rem', color: '#64748b', marginTop: '2px' }}>
               Catatan kehadiran, jam masuk/keluar, alasan keterlambatan (Catatan Telat), dan alasan pulang cepat (Catatan Pulang).
@@ -1366,6 +1625,45 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
 
           {/* Month, Year & Search Filters */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <button
+                type="button"
+                onClick={() => handlePeriodChange('calendar')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '0.775rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: periodType === 'calendar' ? '#ffffff' : 'transparent',
+                  color: periodType === 'calendar' ? '#0f172a' : '#64748b',
+                  boxShadow: periodType === 'calendar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                01-31
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePeriodChange('cutoff')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '0.775rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: periodType === 'cutoff' ? '#ffffff' : 'transparent',
+                  color: periodType === 'cutoff' ? '#0f172a' : '#64748b',
+                  boxShadow: periodType === 'cutoff' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                16-15
+              </button>
+            </div>
+
             <select
               className="bm-input"
               value={selectedMonth}
@@ -1430,22 +1728,22 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
                 </tr>
               ) : (
                 filteredAttendanceHistory.map((item, idx) => {
-                  const rawDate = item.tanggal || (item.absen_masuk ? getLocalDateStr(item.absen_masuk) : '');
+                  const rawDate = item.tanggal || (item.absen_masuk && item.absen_masuk !== '-' ? getLocalDateStr(item.absen_masuk) : '');
                   
                   // STRICT SPEC: Read strictly from item.catatan_telat / item.alasan_telat and item.catatan_pulang / item.alasan_pulang
                   const txtCatatanTelat = item.catatan_telat || item.alasan_telat || '-';
                   const txtCatatanPulang = item.catatan_pulang || item.alasan_pulang || '-';
 
                   return (
-                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s ease' }}>
+                    <tr key={item.tanggal || idx} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s ease' }}>
                       <td style={{ padding: '16px 18px', fontWeight: 700, color: '#0f172a' }}>
                         {formatIndonesianDate(rawDate)}
                       </td>
-                      <td style={{ padding: '16px 18px', color: '#0284c7', fontWeight: 700 }}>
-                        {formatIndonesianTime(item.absen_masuk)}
+                      <td style={{ padding: '16px 18px', color: item.absen_masuk && item.absen_masuk !== '-' ? '#0284c7' : '#64748b', fontWeight: item.absen_masuk && item.absen_masuk !== '-' ? 700 : 400 }}>
+                        {item.absen_masuk && item.absen_masuk !== '-' ? formatIndonesianTime(item.absen_masuk) : '-'}
                       </td>
-                      <td style={{ padding: '16px 18px', color: '#7c3aed', fontWeight: 700 }}>
-                        {formatIndonesianTime(item.absen_keluar)}
+                      <td style={{ padding: '16px 18px', color: item.absen_keluar && item.absen_keluar !== '-' ? '#7c3aed' : '#64748b', fontWeight: item.absen_keluar && item.absen_keluar !== '-' ? 700 : 400 }}>
+                        {item.absen_keluar && item.absen_keluar !== '-' ? formatIndonesianTime(item.absen_keluar) : '-'}
                       </td>
                       <td style={{ padding: '16px 18px', color: txtCatatanTelat !== '-' ? '#b91c1c' : '#64748b', fontWeight: txtCatatanTelat !== '-' ? 700 : 400 }}>
                         {txtCatatanTelat}
