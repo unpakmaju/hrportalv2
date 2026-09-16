@@ -606,17 +606,15 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
       const isSunday = curr.getDay() === 0;
       const isHoliday = holidayDateSet.has(dStr);
 
-      // Hari Minggu dipastikan tidak masuk perhitungan increment (meskipun ada holiday atau tidak)
-      if (!isSunday) {
+      if (isSunday || isHoliday) {
         if (isHoliday) {
-          // Hari biasa ada holiday
           totalLibur++;
-        } else {
-          // Hari biasa tidak ada holiday: jika belum absen maka dihitung tidak masuk
-          const hasAttended = attendanceDateSet.has(dStr);
-          if (!hasAttended) {
-            totalTidakMasuk++;
-          }
+        }
+      } else {
+        // Workday: check if user attended
+        const hasAttended = attendanceDateSet.has(dStr);
+        if (!hasAttended) {
+          totalTidakMasuk++;
         }
       }
       curr.setDate(curr.getDate() + 1);
