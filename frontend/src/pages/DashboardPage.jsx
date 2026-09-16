@@ -607,20 +607,20 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
       const isHoliday = holidayDateSet.has(dStr);
 
       if(isSunday){
-        curr.setDate(curr.getDate() + 1);
-        continue;
+        console.log(`${dStr} = isSunday`)
       }
 
-      if (isHoliday) {
+      if (!isSunday && isHoliday) {
         totalLibur++;
-        curr.setDate(curr.getDate() + 1);
-        continue;
+        console.log(`${dStr} = isHoliday`)
+      } else if(!isSunday && !isHoliday){
+        const hasAttended = attendanceDateSet.has(dStr);
+        if (!hasAttended) {
+          totalTidakMasuk++;
+          console.log(`${dStr} = !hasAttended`)
+        }
       }
 
-      const hasAttended = attendanceDateSet.has(dStr);
-      if (!hasAttended) {
-        totalTidakMasuk++;
-      }
       curr.setDate(curr.getDate() + 1);
     }
   }
