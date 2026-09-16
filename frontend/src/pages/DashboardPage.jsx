@@ -606,16 +606,20 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
       const isSunday = curr.getDay() === 0;
       const isHoliday = holidayDateSet.has(dStr);
 
-      if (isSunday || isHoliday) {
-        if (isHoliday) {
-          totalLibur++;
-        }
-      } else {
-        // Workday: check if user attended
-        const hasAttended = attendanceDateSet.has(dStr);
-        if (!hasAttended) {
-          totalTidakMasuk++;
-        }
+      if(isSunday){
+        curr.setDate(curr.getDate() + 1);
+        continue;
+      }
+
+      if (isHoliday) {
+        totalLibur++;
+        curr.setDate(curr.getDate() + 1);
+        continue;
+      }
+
+      const hasAttended = attendanceDateSet.has(dStr);
+      if (!hasAttended) {
+        totalTidakMasuk++;
       }
       curr.setDate(curr.getDate() + 1);
     }
