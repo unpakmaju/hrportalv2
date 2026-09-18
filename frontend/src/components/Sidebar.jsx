@@ -13,6 +13,7 @@ import {
   Circle,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { UserAvatar } from "./UserAvatar";
 
 export const Sidebar = ({
   activeTab,
@@ -358,23 +359,7 @@ export const Sidebar = ({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div
-              style={{
-                width: "34px",
-                height: "34px",
-                borderRadius: "50%",
-                backgroundColor: "#111827",
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 700,
-                fontSize: "0.8rem",
-                flexShrink: 0,
-              }}
-            >
-              {(user?.name || "AF")[0].toUpperCase()}
-            </div>
+            <UserAvatar user={user} size={36} />
             {!isCollapsed && (
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
