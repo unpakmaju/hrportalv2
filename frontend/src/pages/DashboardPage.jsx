@@ -1927,31 +1927,6 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
                         <strong style={{ fontSize: '0.785rem', color: !networkInfo.online ? '#991b1b' : '#92400e', display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <span>{!networkInfo.online ? 'Rick Sanchez to Kamu (Offline):' : 'Rick Sanchez to Kamu (Jaringan Lemot):'}</span>
                         </strong>
-                        <button
-                          onClick={() => {
-                            let newR;
-                            if (!networkInfo.online) {
-                              newR = getRandomRoast('offline', 0, 0);
-                              setUserRoastMessage(newR);
-                            } else {
-                              newR = getRandomRoast('slow_network', networkInfo.ping, networkInfo.speedMbps);
-                              setUserRoastMessage(newR);
-                            }
-                            setRoastMessage(newR);
-                          }}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            fontSize: '0.7rem',
-                            color: '#b45309',
-                            cursor: 'pointer',
-                            textDecoration: 'underline',
-                            fontWeight: 700,
-                          }}
-                          title="Klik untuk kritik multiverse lainnya"
-                        >
-                          Roast Lagi 🌀
-                        </button>
                       </div>
                       <div style={{ fontSize: '0.76rem', color: !networkInfo.online ? '#b91c1c' : '#b45309', lineHeight: 1.45 }}>
                         {!networkInfo.online
