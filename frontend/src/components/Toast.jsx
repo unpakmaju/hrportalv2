@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { CheckCircle, AlertCircle, Info, X } from 'lucide-react';
+import { CheckCircle, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 const ToastContext = createContext(null);
 
@@ -25,10 +25,11 @@ export const ToastProvider = ({ children }) => {
       <div className="toast-container">
         {toasts.map((toast) => (
           <div key={toast.id} className={`toast toast-${toast.type}`}>
-            {toast.type === 'success' && <CheckCircle size={18} color="var(--color-success)" />}
-            {toast.type === 'error' && <AlertCircle size={18} color="var(--color-danger)" />}
-            {toast.type === 'info' && <Info size={18} color="var(--color-info)" />}
-            <span style={{ flex: 1 }}>{toast.message}</span>
+            {toast.type === 'success' && <CheckCircle size={18} color="#10b981" />}
+            {toast.type === 'error' && <AlertCircle size={18} color="#ef4444" />}
+            {toast.type === 'warning' && <AlertTriangle size={18} color="#f59e0b" />}
+            {toast.type === 'info' && <Info size={18} color="#0284c7" />}
+            <span style={{ flex: 1, lineHeight: 1.4 }}>{toast.message}</span>
             <button
               onClick={() => removeToast(toast.id)}
               style={{
@@ -36,6 +37,9 @@ export const ToastProvider = ({ children }) => {
                 border: 'none',
                 cursor: 'pointer',
                 color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '2px',
               }}
             >
               <X size={16} />

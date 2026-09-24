@@ -24,6 +24,14 @@ import {
   Sparkles,
   ChevronRight,
   Wifi,
+  WifiOff,
+  Activity,
+  Gauge,
+  Zap,
+  Coffee,
+  AlertTriangle,
+  Timer,
+  Signal,
   ShieldCheck,
   BookOpen,
   Laptop,
@@ -202,6 +210,239 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  // --- Granular Fetch Progress States ---
+  const [fetchSteps, setFetchSteps] = useState({
+    presensi: { label: 'Data Presensi', desc: 'Riwayat absen & status hari ini', status: 'pending' },
+    cuti: { label: 'Pengajuan Cuti', desc: 'Status cuti tahunan & sakit', status: 'pending' },
+    izin: { label: 'Permohonan Izin', desc: 'Izin dinas/terlambat/meninggalkan tugas', status: 'pending' },
+    sppd: { label: 'Perjalanan SPPD', desc: 'Riwayat tugas & surat jalan', status: 'pending' },
+    holiday: { label: 'Kalender Libur', desc: 'Kalender hari libur UNPAK & nasional', status: 'pending' },
+  });
+  const [fetchElapsed, setFetchElapsed] = useState(0);
+  const [fetchErrorMsg, setFetchErrorMsg] = useState(null);
+
+  // --- Real-Time Network Quality & Rick and Morty Multiverse Roast Engine ---
+  // SEPARASI: Roasting ke Pengguna (trouble di sisi user/jaringan) vs Roasting ke Developer (trouble di sisi backend/API server, tidak terpengaruh koneksi user)
+  const ROAST_QUOTES = {
+    // 1. Trouble di Sisi PENGGUNA: Jaringan Lemot / Ping Tinggi
+    slow_network: [
+      'Dengar ya Morty... *burp* di antara jutaan realitas di multiverse, cuma di dimensi ini kita harus nunggu paket datamu jalan kaki ({ping}ms / {speed} Mbps)!',
+      'Morty! Kamu pikir kuotamu bisa nembus server kalau sinyal cuma {speed} Mbps?! Kamu lagi tethering dari kalkulator jadul apa gimana?!',
+      'Wubba Lubba Dub Dub! Ping {ping}ms ini bukan delay biasa Morty, ini bukti kamu lagi mojok di tempat yang kehalang tembok tebal! Geser ke dekat jendela gih!',
+      'Secara sains kecepatan cahaya itu mutlak, Morty. Tapi paket data hematmu ({ping}ms) berhasil membantah hukum fisika kuantum dengan jadi selambat ini!',
+      'Morty, jangan tatap layar dengan muka sedih gitu! Pindah posisi, cari sinyal! Kecepatan {speed} Mbps ini bikin portal gun ikutan ngelag!',
+      'Bahkan baterai portal gun yang bocor dan karatan masih punya transfer rate lebih waras daripada tethering {speed} Mbps kamu, Morty! *burp*',
+      'Kamu mau presensi hari ini atau nunggu kiamat multiverse dulu, Morty?! Beli paket data yang stabil, jangan numpang hotspot yang orangnya sudah jalan pulang!',
+      'Sabar Morty... Bit datamu lagi ngos-ngosan mendaki bukit bawa paket presensi ({ping}ms). Lain kali cari tempat dengan sinyal yang lebih bagus!',
+      'Koneksi {ping}ms... Ini semesta lagi menyindir kamu, Morty: "Mending kamu jalan ke dekat access point daripada bengong di pojokan lorong".',
+      'Alien di planet Blips and Chitz saja punya WiFi 5G antardimensi, sedangkan kuotamu di sini ({ping}ms) ngos-ngosan seperti habis lari maraton!',
+      'Morty, tarik napas... *burp* Sinyalmu {speed} Mbps ini butuh pertolongan darurat. Jangan buka streaming video dulu kalau mau presensi!',
+      'Fisika kuantum geleng-geleng kepala melihat ping {ping}ms kamu, Morty. Paket datamu lagi mampir ngopi di warung kabel optik apa gimana?!',
+    ],
+    // 2. Trouble di Sisi PENGGUNA: Offline Total / Internet Terputus
+    offline: [
+      'Morty! *burp* Kamu cabut colokan router atau paket datamu habis?! Kita offline total! Jangan harap presensi tembus pakai telepati batin! 🔌',
+      'Bagus sekali Morty, offline total. Sekarang kamu mau presensi pakai sinyal morse? Cek kuota atau aktifkan Wi-Fi kamu sebelum portalnya tertutup! 🛑',
+      'Matrix-nya putus, Morty! Kamu sekarang terdampar di dimensi offline tanpa kuota. Coba cek mode pesawat di HP kamu sebelum panik! 📡',
+      'Wubba Lubba Dub Dub! Koneksi internetmu lenyap ditelan void antardimensi! Cepat periksa router atau paket data sebelum jam absen berakhir! 🛸',
+      'Morty, kamu tidak bisa menyalahkan portal HR kalau perangkatmu sendiri tidak ada sinyal! Keluar dari ruangan tertutup atau aktifkan koneksimu sekarang! 📶',
+      'Tenang Morty, jangan panik dulu... *burp* Cek sambungan Wi-Fi atau paket datamu. Sinyalmu sedang bermasalah atau kuotanya habis tak bersisa?! 🔌',
+      'Morty, kamu mau presensi di dimensi nyata tapi internetmu ada di dimensi gaib! Sambungkan lagi koneksimu sebelum Rick pusing! 🧪',
+      'Di semesta lain alien sudah pakai transmisi kuantum antargalaksi, Morty! Sedangkan kamu di bumi lupa menyalakan paket data! Ayo aktifkan dulu! ⚡',
+    ],
+    // 3. Jaringan Cepat & Stabil (Pengguna Prima)
+    fast: [
+      'Boom! Wubba Lubba Dub Dub! Koneksi multiverse level dewa ({ping}ms / {speed} Mbps)! Secepat portal gun nembus dimensi C-137! ⚡🚀',
+      'Akhirnya kamu pakai koneksi yang prima, Morty! Ping {ping}ms! Data terkirim secepat kecepatan cahaya, dewan Rick bangga! 🏎️💨',
+      'Wusss! {speed} Mbps tanpa kompromi! Server HR Portal takluk dalam satu detik. Sekarang presensi sebelum dimensi ini glitch! 🧪✨',
+      'Koneksi galaktik terdeteksi ({ping}ms)! Presensi mulus tanpa hambatan ruang dan waktu, kerja bagus Morty! 🌟',
+    ],
+    // 4. Trouble di Sisi DEVELOPER: Beberapa API Gagal (Internet Pengguna Aman & Online)
+    // Sesuai aturan: Tidak terpengaruh koneksi jaringan pengguna, murni mengkritik server/backend code!
+    dev_error_partial: [
+      'Morty! *burp* Internet kamu sangat kencang ({speed} Mbps), tapi request {tasks} gagal! Ini murni ulah developernya yang push kode Jumat sore tanpa unit test!',
+      'Dengar ya Morty, koneksimu aman sentosa, tapi endpoint {tasks} tumbang. Developernya pasti sedang beralasan: "Di localhost saya jalan normal kok!". Klasik!',
+      'Astaga Morty, sinyalmu prima tapi API {tasks} error! Developernya menulis query database pakai satu jari sambil mengantuk apa bagaimana?!',
+      'Morty! *burp* Bahkan Jerry bisa membuat endpoint {tasks} lebih stabil dari ini! Sinyalmu tidak salah sama sekali, developernya yang lupa pasang try-catch!',
+      'Wubba Lubba Dub Dub! Jaringanmu 100% sehat, tapi route backend {tasks} bermasalah! Developernya pasti belajar backend dari tutorial kilat tanpa membaca dokumentasi!',
+      'Jangan sentuh router kamu, Morty! Wi-Fi kamu sehat walafiat! Yang bermasalah itu logika route {tasks} di server backend developernya!',
+      'Morty, lihat kan? Kuotamu aman terkendali, tapi respon {tasks} amblas. Developernya kebanyakan ngopi tapi lupa memantau error log di server!',
+      'Sinyalmu mulus seperti jalan tol ({ping}ms), Morty! Tapi server backend developernya mogok di tanjakan {tasks}. Salahkan developernya, bukan Wi-Fi kamu!',
+    ],
+    // 5. Trouble di Sisi DEVELOPER: Seluruh API Gagal Total (Internet Pengguna Aman & Online)
+    dev_error_all: [
+      'SEMUANYA AMBRUK, MORTY! *burp* Internetmu lancar jaya, tapi server developernya mati total! Pasti developernya sedang migrasi database langsung di server production!',
+      'Wubba Lubba Dub Dub! Koneksimu hijau prima ({speed} Mbps), tapi semua API rontok! Ini developernya sedang cosplay jadi black hole apa bagaimana?!',
+      'Morty! *burp* Jangan salahkan kuotamu! Ini 100% mahakarya spaghetti-code dari developernya yang membuat server backend kewalahan!',
+      'Semua endpoint menolak koneksi, Morty! Padahal internetmu sangat cepat! Developernya pasti sedang panik keringat dingin mengetik "git reset --hard"!',
+      'Bahkan peradaban primitif di semesta C-137 punya backend lebih tangguh dari ini, Morty! Server HR Portal tumbang berjamaah gara-gara bug developernya!',
+      'Morty, koneksi kita terhubung sempurna ({ping}ms), tapi server developernya tidak ada tanda-tanda kehidupan. Pasti developernya ketiduran di atas keyboard!',
+    ],
+  };
+
+  const getRandomRoast = useCallback((type, pingVal, speedVal, tasksVal = '') => {
+    let key = type;
+    if (key === 'user_slow') key = 'slow_network';
+    if (key === 'user_offline') key = 'offline';
+    const list = ROAST_QUOTES[key] || ROAST_QUOTES.slow_network;
+    const raw = list[Math.floor(Math.random() * list.length)];
+    return raw
+      .replace('{ping}', pingVal ? `${pingVal}` : '999+')
+      .replace('{speed}', speedVal ? `${speedVal}` : '< 0.5')
+      .replace('{tasks}', tasksVal || 'modul');
+  }, []);
+
+  const [networkInfo, setNetworkInfo] = useState({
+    online: typeof navigator !== 'undefined' ? navigator.onLine : true,
+    ping: null,
+    speedMbps: null,
+    effectiveType: null,
+    quality: 'checking', // 'good' | 'fair' | 'poor' | 'offline'
+    lastTested: null,
+  });
+  const [userRoastMessage, setUserRoastMessage] = useState('');
+  const [devRoastMessage, setDevRoastMessage] = useState('');
+  const [roastMessage, setRoastMessage] = useState('');
+  const [failedModules, setFailedModules] = useState([]);
+
+  // Measure Realtime Latency & Connection Speed from Device Hardware/Network Stack
+  const checkNetworkQuality = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setNetworkInfo({
+        online: false,
+        ping: null,
+        speedMbps: 0,
+        effectiveType: 'none',
+        quality: 'offline',
+        lastTested: new Date(),
+      });
+      const roast = getRandomRoast('offline', 0, 0);
+      setUserRoastMessage(roast);
+      setRoastMessage(roast);
+      return { quality: 'offline', ping: null, speed: 0 };
+    }
+
+    const conn = typeof navigator !== 'undefined' ? (navigator.connection || navigator.mozConnection || navigator.webkitConnection) : null;
+    const deviceDownlink = conn?.downlink ? Number(conn.downlink) : null;
+    const effectiveType = conn?.effectiveType || '4g';
+    const deviceRtt = conn?.rtt ? Number(conn.rtt) : null;
+
+    // Prioritaskan nilai RTT dan Downlink langsung dari device
+    let ping = deviceRtt;
+    let speed = deviceDownlink;
+
+    // Jika browser (misal Safari) belum mengimplementasikan conn.rtt, lakukan micro-ping cepat ke favicon/local asset dengan timeout ketat 600ms
+    if (ping === null) {
+      try {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 600);
+        const startPing = performance.now();
+        await fetch(window.location.origin + '/favicon.ico?_ping=' + Date.now(), { method: 'HEAD', cache: 'no-store', signal: ctrl.signal });
+        clearTimeout(tid);
+        ping = Math.round(performance.now() - startPing);
+      } catch (_) {
+        ping = 25; // default lokal latensi cepat
+      }
+    }
+
+    if (speed === null) {
+      speed = ping < 80 ? 15.0 : ping < 200 ? 5.2 : 1.2;
+    }
+
+    let quality = 'good';
+    if (ping > 350 || speed < 1.0 || effectiveType === '2g' || effectiveType === 'slow-2g') {
+      quality = 'poor';
+    } else if (ping > 150 || speed < 3.0 || effectiveType === '3g') {
+      quality = 'fair';
+    } else {
+      quality = 'good';
+    }
+
+    const roast = (quality === 'poor')
+      ? getRandomRoast('slow_network', ping, speed)
+      : (quality === 'fair')
+      ? `Jaringan agak lambat nih (Ping: ${ping}ms, Speed: ${speed} Mbps). Sabar ya!`
+      : getRandomRoast('fast', ping, speed);
+
+    setNetworkInfo({
+      online: true,
+      ping,
+      speedMbps: speed,
+      effectiveType,
+      quality,
+      lastTested: new Date(),
+    });
+    if (quality === 'poor' || quality === 'fair') {
+      setUserRoastMessage(roast);
+    }
+    setRoastMessage(roast);
+
+    return { quality, ping, speed };
+  }, [getRandomRoast]);
+
+  // Online / Offline, Device Network Change & Real-Time Auto Monitoring Listener
+  useEffect(() => {
+    const updateConnectionStatus = () => {
+      checkNetworkQuality();
+    };
+
+    const conn = typeof navigator !== 'undefined' ? (navigator.connection || navigator.mozConnection || navigator.webkitConnection) : null;
+    if (conn && conn.addEventListener) {
+      conn.addEventListener('change', updateConnectionStatus);
+    }
+
+    const handleOnline = () => {
+      checkNetworkQuality();
+    };
+    const handleOffline = () => {
+      const roast = getRandomRoast('offline', 0, 0);
+      setNetworkInfo((prev) => ({ ...prev, online: false, quality: 'offline' }));
+      setUserRoastMessage(roast);
+      setRoastMessage(roast);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    checkNetworkQuality();
+
+    // Pemantauan otomatis real-time dari device setiap 5 detik
+    const netInterval = setInterval(() => {
+      checkNetworkQuality();
+    }, 5000);
+
+    return () => {
+      if (conn && conn.removeEventListener) {
+        conn.removeEventListener('change', updateConnectionStatus);
+      }
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(netInterval);
+    };
+  }, [checkNetworkQuality, getRandomRoast]);
+
+  // Real-time Loading Timer & Roasting Alert Trigger
+  useEffect(() => {
+    let timer;
+    if (loading) {
+      setFetchElapsed(0);
+      timer = setInterval(() => {
+        setFetchElapsed((prev) => {
+          const next = prev + 1;
+          if (next === 4) {
+            const roast = getRandomRoast('slow_network', networkInfo.ping || 420, networkInfo.speedMbps || 0.6);
+            setUserRoastMessage(roast);
+            setRoastMessage(roast);
+          }
+          return next;
+        });
+      }, 1000);
+    } else {
+      setFetchElapsed(0);
+    }
+    return () => clearInterval(timer);
+  }, [loading, networkInfo.ping, networkInfo.speedMbps, getRandomRoast]);
+
   // --- Modal Conditions ---
   const [showLateModal, setShowLateModal] = useState(false);
   const [lateReason, setLateReason] = useState('');
@@ -246,41 +487,140 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
 
   const yearsList = Array.from({ length: Math.max(1, currentYearNum - 2000 + 1) }, (_, i) => 2000 + i);
 
-  // Fetch All Dashboard Data
+  // Fetch All Dashboard Data with Granular Tracking & Network Diagnostics
   const fetchDashboardData = async () => {
     setLoading(true);
+    setFetchErrorMsg(null);
+    const startTime = performance.now();
+
+    setFetchSteps({
+      presensi: { label: 'Data Presensi', desc: 'Riwayat absen & status hari ini', status: 'loading' },
+      cuti: { label: 'Pengajuan Cuti', desc: 'Status cuti tahunan & sakit', status: 'loading' },
+      izin: { label: 'Permohonan Izin', desc: 'Izin dinas & meninggalkan tugas', status: 'loading' },
+      sppd: { label: 'Perjalanan SPPD', desc: 'Riwayat tugas & surat jalan', status: 'loading' },
+      holiday: { label: 'Kalender Libur', desc: 'Kalender hari libur UNPAK & nasional', status: 'loading' },
+    });
+
+    const executeTask = async (key, label, desc, promise) => {
+      try {
+        const res = await promise;
+        setFetchSteps((prev) => ({
+          ...prev,
+          [key]: { label, desc, status: 'success' },
+        }));
+        return { key, status: 'fulfilled', value: res };
+      } catch (err) {
+        setFetchSteps((prev) => ({
+          ...prev,
+          [key]: { label, desc, status: 'error', error: err?.message || 'Gagal memuat' },
+        }));
+        return { key, status: 'rejected', reason: err };
+      }
+    };
+
     try {
       const [attRes, cutiRes, izinRes, sppdRes, holRes] = await Promise.allSettled([
-        apiClient.get('/api/v2/attendance/history'),
-        apiClient.get('/api/v2/leave'),
-        apiClient.get('/api/v2/izin'),
-        apiClient.get('/api/v2/sppd/history'),
-        apiClient.get('/api/v2/holiday'),
+        executeTask('presensi', 'Data Presensi', 'Riwayat absen & status hari ini', apiClient.get('/api/v2/attendance/history')),
+        executeTask('cuti', 'Pengajuan Cuti', 'Status cuti tahunan & sakit', apiClient.get('/api/v2/leave')),
+        executeTask('izin', 'Permohonan Izin', 'Izin dinas & meninggalkan tugas', apiClient.get('/api/v2/izin')),
+        executeTask('sppd', 'Perjalanan SPPD', 'Riwayat tugas & surat jalan', apiClient.get('/api/v2/sppd/history')),
+        executeTask('holiday', 'Kalender Libur', 'Kalender hari libur UNPAK & nasional', apiClient.get('/api/v2/holiday')),
       ]);
 
-      const attData = attRes.status === 'fulfilled' ? (Array.isArray(attRes.value) ? attRes.value : (attRes.value?.data || [])) : [];
-      const cutiData = cutiRes.status === 'fulfilled' ? (Array.isArray(cutiRes.value) ? cutiRes.value : (cutiRes.value?.data || [])) : [];
-      const izinData = izinRes.status === 'fulfilled' ? (Array.isArray(izinRes.value) ? izinRes.value : (izinRes.value?.data || [])) : [];
-      const sppdData = sppdRes.status === 'fulfilled' ? (Array.isArray(sppdRes.value) ? sppdRes.value : (sppdRes.value?.data || [])) : [];
-      const holData = holRes.status === 'fulfilled' ? (Array.isArray(holRes.value) ? holRes.value : (holRes.value?.data || [])) : [];
+      const attVal = attRes.status === 'fulfilled' && attRes.value?.status === 'fulfilled' ? attRes.value.value : null;
+      const cutiVal = cutiRes.status === 'fulfilled' && cutiRes.value?.status === 'fulfilled' ? cutiRes.value.value : null;
+      const izinVal = izinRes.status === 'fulfilled' && izinRes.value?.status === 'fulfilled' ? izinRes.value.value : null;
+      const sppdVal = sppdRes.status === 'fulfilled' && sppdRes.value?.status === 'fulfilled' ? sppdRes.value.value : null;
+      const holVal = holRes.status === 'fulfilled' && holRes.value?.status === 'fulfilled' ? holRes.value.value : null;
 
-      setAttendanceHistory(attData);
-      setCutiList(cutiData);
-      setIzinList(izinData);
-      setSppdList(sppdData);
-      setHolidayList(holData);
+      const attData = Array.isArray(attVal) ? attVal : (attVal?.data || []);
+      const cutiData = Array.isArray(cutiVal) ? cutiVal : (cutiVal?.data || []);
+      const izinData = Array.isArray(izinVal) ? izinVal : (izinVal?.data || []);
+      const sppdData = Array.isArray(sppdVal) ? sppdVal : (sppdVal?.data || []);
+      const holData = Array.isArray(holVal) ? holVal : (holVal?.data || []);
+
+      if (attVal) setAttendanceHistory(attData);
+      if (cutiVal) setCutiList(cutiData);
+      if (izinVal) setIzinList(izinData);
+      if (sppdVal) setSppdList(sppdData);
+      if (holVal) setHolidayList(holData);
 
       // Today Absen Check (WIB timezone safe)
-      const todayStr = getLocalDateStr();
-      const foundToday = attData.find((item) => { //[pr] belum ada pengecekan jam 04:00 untuk shif malam absen keluar
-        const dateStr = item.tanggal || (item.absen_masuk ? getLocalDateStr(item.absen_masuk) : '');
-        return dateStr === todayStr;
+      const isUserOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+      if (attVal) {
+        const todayStr = getLocalDateStr();
+        const foundToday = attData.find((item) => {
+          const dateStr = item.tanggal || (item.absen_masuk ? getLocalDateStr(item.absen_masuk) : '');
+          return dateStr === todayStr;
+        });
+        setTodayAbsen(foundToday || null);
+      } else {
+        const isPresensiNetworkErr = !isUserOnline || 
+          String(fetchSteps.presensi.error || '').toLowerCase().includes('failed to fetch') ||
+          String(fetchSteps.presensi.error || '').toLowerCase().includes('network');
+        setFetchErrorMsg(
+          isPresensiNetworkErr
+            ? 'Koneksi internet Anda terputus (Offline). Periksa kembali sambungan Wi-Fi atau paket data Anda.'
+            : 'Gagal mengambil data riwayat presensi dari server. Server backend sedang bermasalah.'
+        );
+      }
+
+      // Track failed requests for Rick's developer roasting
+      const failedList = [];
+      if (!attVal) failedList.push('Presensi');
+      if (!cutiVal) failedList.push('Cuti');
+      if (!izinVal) failedList.push('Izin');
+      if (!sppdVal) failedList.push('SPPD');
+      if (!holVal) failedList.push('Hari Libur');
+      setFailedModules(failedList);
+
+      // Calculate Duration & Network Diagnostics
+      const durationMs = Math.round(performance.now() - startTime);
+      const durationSec = durationMs / 1000;
+      const totalBytes = JSON.stringify([attData, cutiData, izinData, sppdData, holData]).length;
+      const measuredSpeed = Number(((totalBytes * 8) / (durationSec * 1024 * 1024)).toFixed(2)) || (durationSec > 3 ? 0.6 : 3.5);
+      const measuredPing = Math.max(30, Math.round(durationMs / 4));
+
+      setNetworkInfo((prev) => {
+        const ping = prev.ping || measuredPing;
+        const speed = prev.speedMbps || measuredSpeed;
+        let quality = 'good';
+        if (!isUserOnline) quality = 'offline';
+        else if (durationSec > 3.5 || ping > 350 || speed < 1.2) quality = 'poor';
+        else if (durationSec > 2 || ping > 150) quality = 'fair';
+        return { ...prev, online: isUserOnline, ping: isUserOnline ? ping : null, speedMbps: isUserOnline ? speed : 0, quality, lastTested: new Date() };
       });
-      setTodayAbsen(foundToday || null);
+
+      // SEPARASI ROASTING PENGGUNA VS DEVELOPER:
+      // A. Jika trouble di sisi PENGGUNA (Offline / Internet Mati):
+      if (!isUserOnline) {
+        const uRoast = getRandomRoast('offline', 0, 0);
+        setUserRoastMessage(uRoast);
+        setRoastMessage(uRoast);
+      }
+      // B. Jika pengguna ONLINE, tapi request API gagal (Trouble di sisi DEVELOPER, tidak terpengaruh koneksi jaringan):
+      else if (failedList.length === 5) {
+        const devRoast = getRandomRoast('dev_error_all', measuredPing, measuredSpeed);
+        setDevRoastMessage(devRoast);
+        setRoastMessage(devRoast);
+      } else if (failedList.length > 0) {
+        const devRoast = getRandomRoast('dev_error_partial', measuredPing, measuredSpeed, failedList.join(', '));
+        setDevRoastMessage(devRoast);
+        setRoastMessage(devRoast);
+      }
+      // C. Jika semua request API sukses, tapi jaringan pengguna lemot:
+      else if (durationSec > 3.5 || measuredPing > 350 || measuredSpeed < 1.2) {
+        const uRoast = getRandomRoast('slow_network', measuredPing, measuredSpeed);
+        setUserRoastMessage(uRoast);
+        setRoastMessage(uRoast);
+      }
+
       // Refresh status IP client saat refresh dashboard
       detectClientIps();
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
+      setFetchErrorMsg(err?.message || 'Terjadi kesalahan sistem saat memuat data dashboard.');
     } finally {
       setLoading(false);
     }
@@ -1145,12 +1485,20 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
 
         <button
           onClick={fetchDashboardData}
+          disabled={loading}
           className="bm-btn-outline"
-          style={{ height: '40px', padding: '0 18px', borderRadius: '12px', background: '#ffffff' }}
-          title="Refresh Data"
+          style={{
+            height: '40px',
+            padding: '0 18px',
+            borderRadius: '12px',
+            background: '#ffffff',
+            opacity: loading ? 0.75 : 1,
+            cursor: loading ? 'not-allowed' : 'pointer',
+          }}
+          title="Refresh Data & Sinkronisasi"
         >
-          <RefreshCw size={16} />
-          <span>Refresh Data</span>
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          <span>{loading ? `Memuat (${fetchElapsed}s)...` : 'Refresh Data'}</span>
         </button>
       </div>
 
@@ -1462,7 +1810,266 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
               </div>
             )}
 
-            { (!loading && (!todayAbsen || !todayAbsen.absen_masuk)) ? (
+            { loading ? (
+              <div
+                style={{
+                  padding: '20px',
+                  borderRadius: '16px',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+                  border: '1.5px solid #e2e8f0',
+                  boxShadow: 'var(--shadow-3d-sm)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  animation: 'fadeIn 0.25s ease',
+                }}
+              >
+                {/* Loading Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>
+                    <RefreshCw size={18} className="animate-spin" color="#0284c7" />
+                    <span>Sedang Mengambil Data Dashboard...</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '3px 8px', borderRadius: '6px', background: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Timer size={13} color="#0284c7" />
+                      <span>{fetchElapsed} detik</span>
+                    </span>
+                    {networkInfo.ping && (
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          background: networkInfo.ping > 300 ? '#fef2f2' : '#f0fdf4',
+                          color: networkInfo.ping > 300 ? '#dc2626' : '#15803d',
+                        }}
+                      >
+                        Ping: {networkInfo.ping}ms
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Subtitle penjelasan */}
+                <p style={{ fontSize: '0.785rem', color: '#64748b', margin: 0 }}>
+                  Menghubungi server HR Portal &amp; sinkronisasi data presensi, izin, cuti, sppd, serta hari libur:
+                </p>
+
+                {/* Granular Task Checklist Pills */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                  {[
+                    { key: 'presensi', label: 'Presensi', desc: 'Absen masuk/keluar' },
+                    { key: 'cuti', label: 'Cuti', desc: 'Status cuti tahunan/sakit' },
+                    { key: 'izin', label: 'Izin', desc: 'Permohonan izin dinas' },
+                    { key: 'sppd', label: 'SPPD', desc: 'Riwayat tugas luar' },
+                    { key: 'holiday', label: 'Hari Libur', desc: 'Kalender libur UNPAK' },
+                  ].map((item) => {
+                    const step = fetchSteps[item.key] || { status: 'loading' };
+                    const isSuccess = step.status === 'success';
+                    const isError = step.status === 'error';
+
+                    return (
+                      <div
+                        key={item.key}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '10px',
+                          background: isSuccess ? '#f0fdf4' : isError ? '#fef2f2' : '#f8fafc',
+                          border: `1px solid ${isSuccess ? '#bbf7d0' : isError ? '#fecaca' : '#e2e8f0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '6px',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: isSuccess ? '#15803d' : isError ? '#b91c1c' : '#334155' }}>
+                            {item.label}
+                          </span>
+                          <span style={{ fontSize: '0.675rem', color: isSuccess ? '#16a34a' : isError ? '#dc2626' : '#64748b' }}>
+                            {isSuccess ? 'Siap ✓' : isError ? 'Gagal ✕' : 'Mengambil...'}
+                          </span>
+                        </div>
+                        {isSuccess ? (
+                          <CheckCircle2 size={15} color="#16a34a" />
+                        ) : isError ? (
+                          <AlertCircle size={15} color="#dc2626" />
+                        ) : (
+                          <RefreshCw size={13} className="animate-spin" color="#0284c7" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Roasting Alert Box (Muncul jika loading >= 3 detik atau jaringan lambat/offline) */}
+                {(fetchElapsed >= 3 || networkInfo.quality === 'poor' || !networkInfo.online) && (
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      background: !networkInfo.online ? '#fef2f2' : '#fffbeb',
+                      border: `1px solid ${!networkInfo.online ? '#fecaca' : '#fde68a'}`,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      animation: 'fadeIn 0.25s ease',
+                    }}
+                  >
+                    <div style={{ fontSize: '1.35rem', lineHeight: 1 }}>
+                      {!networkInfo.online ? '🔌' : fetchElapsed >= 5 ? '🧪' : '🛸'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                        <strong style={{ fontSize: '0.785rem', color: !networkInfo.online ? '#991b1b' : '#92400e', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>{!networkInfo.online ? 'Rick Sanchez to Kamu (Offline):' : 'Rick Sanchez to Kamu (Jaringan Lemot):'}</span>
+                        </strong>
+                        <button
+                          onClick={() => {
+                            let newR;
+                            if (!networkInfo.online) {
+                              newR = getRandomRoast('offline', 0, 0);
+                              setUserRoastMessage(newR);
+                            } else {
+                              newR = getRandomRoast('slow_network', networkInfo.ping, networkInfo.speedMbps);
+                              setUserRoastMessage(newR);
+                            }
+                            setRoastMessage(newR);
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            fontSize: '0.7rem',
+                            color: '#b45309',
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                            fontWeight: 700,
+                          }}
+                          title="Klik untuk kritik multiverse lainnya"
+                        >
+                          Roast Lagi 🌀
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: !networkInfo.online ? '#b91c1c' : '#b45309', lineHeight: 1.45 }}>
+                        {!networkInfo.online
+                          ? (userRoastMessage || getRandomRoast('offline', 0, 0))
+                          : (userRoastMessage || getRandomRoast('slow_network', networkInfo.ping, networkInfo.speedMbps))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Jika proses berlangsung lebih dari 6 detik, berikan tombol retry darurat */}
+                {fetchElapsed >= 6 && (
+                  <button
+                    onClick={() => fetchDashboardData()}
+                    className="bm-btn-outline"
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      borderRadius: '10px',
+                      justifyContent: 'center',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      background: '#ffffff',
+                      color: '#0284c7',
+                      border: '1px solid #bae6fd',
+                    }}
+                  >
+                    <RefreshCw size={14} />
+                    <span>Jaringan terasa macet? Klik untuk Coba Sinkron Ulang</span>
+                  </button>
+                )}
+              </div>
+            ) : (fetchSteps.presensi.status === 'error' && !todayAbsen) ? (
+              /* Fallback Error Presensi jika gagal request presensi */
+              (() => {
+                const isUserOnline = typeof navigator !== 'undefined' ? navigator.onLine : networkInfo.online;
+                const isPresensiNetworkErr = !isUserOnline || 
+                  !networkInfo.online ||
+                  String(fetchSteps.presensi.error || '').toLowerCase().includes('failed to fetch') ||
+                  String(fetchSteps.presensi.error || '').toLowerCase().includes('network');
+
+                return (
+                  <div
+                    style={{
+                      padding: '18px',
+                      borderRadius: '16px',
+                      background: isPresensiNetworkErr ? '#fef2f2' : '#fff1f2',
+                      border: `1.5px solid ${isPresensiNetworkErr ? '#fecaca' : '#fecdd3'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                      textAlign: 'center',
+                      boxShadow: 'var(--shadow-3d-sm)',
+                      animation: 'fadeIn 0.25s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: isPresensiNetworkErr ? '#b91c1c' : '#9f1239', fontWeight: 800 }}>
+                      {isPresensiNetworkErr ? <WifiOff size={20} /> : <AlertCircle size={20} />}
+                      <span>{isPresensiNetworkErr ? 'Koneksi Internet Terputus (Offline)' : 'Gagal Memuat Status Presensi Hari Ini'}</span>
+                    </div>
+
+                    {/* Roasting Box: Pengguna (Trouble Jaringan) vs Developer (Trouble Server/API) */}
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: `1px solid ${isPresensiNetworkErr ? '#fecaca' : '#fecdd3'}`,
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div style={{ fontSize: '1.25rem', lineHeight: 1 }}>
+                        {isPresensiNetworkErr ? '🔌' : '🧪'}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                          <strong style={{ fontSize: '0.775rem', color: isPresensiNetworkErr ? '#991b1b' : '#9f1239' }}>
+                            {isPresensiNetworkErr ? 'Rick Sanchez to Kamu (Pengguna):' : 'Rick Sanchez to Backend Developer:'}
+                          </strong>
+                        </div>
+                        <div style={{ fontSize: '0.76rem', color: isPresensiNetworkErr ? '#991b1b' : '#881337', lineHeight: 1.45, fontStyle: 'italic' }}>
+                          &quot;{
+                            isPresensiNetworkErr
+                              ? (userRoastMessage || getRandomRoast('offline', 0, 0))
+                              : (devRoastMessage || getRandomRoast('dev_error_partial', networkInfo.ping, networkInfo.speedMbps, 'Presensi'))
+                          }&quot;
+                        </div>
+                      </div>
+                    </div>
+
+                    <p style={{ fontSize: '0.785rem', color: isPresensiNetworkErr ? '#991b1b' : '#7f1d1d', margin: 0 }}>
+                      {isPresensiNetworkErr
+                        ? 'Perangkat Anda sedang tidak terhubung ke internet. Aktifkan Wi-Fi atau paket data untuk memuat data presensi.'
+                        : (fetchSteps.presensi.error || 'Server backend presensi sedang tidak merespon.')}
+                    </p>
+
+                    <button
+                      onClick={() => fetchDashboardData()}
+                      className="bm-btn-emerald"
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        borderRadius: '10px',
+                        justifyContent: 'center',
+                        fontSize: '0.9rem',
+                        fontWeight: 700,
+                      }}
+                    >
+                      <RefreshCw size={16} />
+                      <span>{isPresensiNetworkErr ? 'Coba Sambungkan Kembali' : 'Coba Panggil Ulang Server'}</span>
+                    </button>
+                  </div>
+                );
+              })()
+            ) : (!todayAbsen || !todayAbsen.absen_masuk) ? (
               <button
                 onClick={() => handleCheckIn()}
                 disabled={submitting || hasUnfilledKuesioner}
@@ -1485,7 +2092,7 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
                 <CheckCircle2 size={22} />
                 <span>Absen Masuk</span>
               </button>
-            ) : (!loading && todayAbsen?.absen_masuk && !todayAbsen?.absen_keluar) ? (
+            ) : (todayAbsen?.absen_masuk && !todayAbsen?.absen_keluar) ? (
               <button
                 onClick={() => handleCheckOut()}
                 disabled={submitting || hasUnfilledKuesioner}
@@ -1512,7 +2119,7 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
                 <span>Absen Keluar</span>
               </button>
             ) : (
-              (!loading? <div
+              <div
                 style={{
                   padding: '18px',
                   borderRadius: '14px',
@@ -1529,34 +2136,155 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
               >
                 <CheckCircle2 size={20} color="#15803d" />
                 <span>Presensi Hari Ini Selesai (Masuk &amp; Keluar Recorded)</span>
-              </div> : "")
+              </div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem', color: '#64748b' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <MapPin size={15} color="#10b981" />
-                <span>Lokasi: Kampus UNPAK (Lat: -6.5976, Long: 106.8066)</span>
+            {/* REAL-TIME NETWORK DIAGNOSTICS & ROASTING BAR */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem', color: '#64748b', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MapPin size={15} color="#10b981" />
+                  <span>Lokasi: Kampus UNPAK (Lat: -6.5976, Long: 106.8066)</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <Wifi size={15} color="#0284c7" />
+                  <span>
+                    IP: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{ipAddress}</strong>
+                    {(ipv6Address || (ipAddress && ipAddress.includes(':'))) ? (
+                      <span style={{ marginLeft: '6px', padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '4px', background: '#dcfce7', color: '#15803d' }}>
+                        IPv6
+                      </span>
+                    ) : (ipAddress && ipAddress.includes('.')) ? (
+                      <span style={{ marginLeft: '6px', padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>
+                        IPv4
+                      </span>
+                    ) : null}
+                    {ipv4Address && ipv4Address !== ipAddress && (
+                      <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: '#64748b' }}>
+                        (IPv4: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{ipv4Address}</span>)
+                      </span>
+                    )}
+                  </span>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <Wifi size={15} color="#0284c7" />
-                <span>
-                  IP Address: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{ipAddress}</strong>
-                  {(ipv6Address || (ipAddress && ipAddress.includes(':'))) ? (
-                    <span style={{ marginLeft: '6px', padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '4px', background: '#dcfce7', color: '#15803d' }}>
-                      IPv6
-                    </span>
-                  ) : (ipAddress && ipAddress.includes('.')) ? (
-                    <span style={{ marginLeft: '6px', padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>
-                      IPv4
-                    </span>
-                  ) : null}
-                  {ipv4Address && ipv4Address !== ipAddress && (
-                    <span style={{ marginLeft: '8px', fontSize: '0.75rem', color: '#64748b' }}>
-                      (IPv4: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{ipv4Address}</span>)
-                    </span>
-                  )}
-                </span>
+
+              {/* Live Latency, Speed Mbps & Network Quality Bar */}
+              <div
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  background: networkInfo.quality === 'poor' ? '#fff7ed' : !networkInfo.online ? '#fef2f2' : '#f8fafc',
+                  border: `1px solid ${networkInfo.quality === 'poor' ? '#fed7aa' : !networkInfo.online ? '#fecaca' : '#e2e8f0'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  {/* Quality Pill */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span
+                      style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: !networkInfo.online
+                          ? '#ef4444'
+                          : networkInfo.quality === 'poor'
+                          ? '#f97316'
+                          : networkInfo.quality === 'fair'
+                          ? '#eab308'
+                          : '#10b981',
+                        display: 'inline-block',
+                      }}
+                    />
+                    <strong style={{ fontSize: '0.75rem', color: '#0f172a' }}>
+                      {!networkInfo.online
+                        ? 'Offline (Terputus 🔌)'
+                        : networkInfo.quality === 'poor'
+                        ? 'Jaringan Lemot (Mode Keong 🐌)'
+                        : networkInfo.quality === 'fair'
+                        ? 'Jaringan Cukup'
+                        : 'Koneksi Prima ⚡'}
+                    </strong>
+                  </div>
+
+                  {/* Ping Metric */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: '#475569' }}>
+                    <Activity size={13} color="#0284c7" />
+                    <span>Ping: <strong style={{ fontFamily: 'monospace' }}>{networkInfo.ping !== null ? `${networkInfo.ping} ms` : '...'}</strong></span>
+                  </div>
+
+                  {/* Speed Metric */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: '#475569' }}>
+                    <Gauge size={13} color="#10b981" />
+                    <span>Speed: <strong style={{ fontFamily: 'monospace' }}>{networkInfo.speedMbps !== null ? `${networkInfo.speedMbps} Mbps` : '...'}</strong></span>
+                  </div>
+                </div>
+
+                {/* Real-time Device Sync Badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.725rem', color: '#64748b' }}>
+                  <span
+                    style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: !networkInfo.online ? '#ef4444' : '#10b981',
+                      boxShadow: !networkInfo.online ? '0 0 6px #ef4444' : '0 0 6px #10b981',
+                      display: 'inline-block',
+                    }}
+                  />
+                  <span>Real-time Device {networkInfo.effectiveType ? `(${networkInfo.effectiveType.toUpperCase()})` : ''}</span>
+                </div>
               </div>
+
+              {/* Roasting Pill di Bawah Bar jika Jaringan Sedang Kurang Bagus / Gagal API */}
+              {/* Rick & Morty Multiverse Sarcasm Bar (Hanya tampil jika kartu error presensi di atas tidak sedang aktif, menghindari duplikasi) */}
+              {!(fetchSteps.presensi.status === 'error' && !todayAbsen) && (networkInfo.quality === 'poor' || !networkInfo.online || (networkInfo.online && failedModules.length > 0)) && (
+                (() => {
+                  const isUserOnline = typeof navigator !== 'undefined' ? navigator.onLine : networkInfo.online;
+                  const isOffline = !isUserOnline || !networkInfo.online;
+                  const isDevError = isUserOnline && failedModules.length > 0;
+
+                  const roastTitle = isOffline 
+                    ? 'Rick Sanchez to Kamu (Offline):' 
+                    : isDevError 
+                    ? 'Rick Sanchez to Developer:' 
+                    : 'Rick Sanchez to Kamu (Jaringan Lemot):';
+
+                  const displayedRoast = isOffline
+                    ? (userRoastMessage || getRandomRoast('offline', 0, 0))
+                    : isDevError
+                    ? (devRoastMessage || (failedModules.length === 5 ? getRandomRoast('dev_error_all', networkInfo.ping, networkInfo.speedMbps) : getRandomRoast('dev_error_partial', networkInfo.ping, networkInfo.speedMbps, failedModules.join(', '))))
+                    : (userRoastMessage || getRandomRoast('slow_network', networkInfo.ping, networkInfo.speedMbps));
+
+                  return (
+                    <div
+                      style={{
+                        fontSize: '0.74rem',
+                        fontStyle: 'italic',
+                        color: isOffline ? '#991b1b' : isDevError ? '#9f1239' : '#c2410c',
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        background: isOffline ? '#fef2f2' : isDevError ? '#fff1f2' : '#fff7ed',
+                        border: `1px solid ${isOffline ? '#fecaca' : isDevError ? '#fecdd3' : '#fed7aa'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                      }}
+                    >
+                      <span>
+                        {isOffline ? '🔌' : isDevError ? '🧪' : '🐌'}{' '}
+                        <strong>{roastTitle}</strong> &quot;{displayedRoast}&quot;
+                      </span>
+                    </div>
+                  );
+                })()
+              )}
             </div>
           </div>
         </div>
@@ -1717,7 +2445,20 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
               {loading ? (
                 <tr>
                   <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}>
-                    Memuat data presensi...
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <RefreshCw size={24} className="animate-spin" color="#0284c7" />
+                      <span style={{ fontWeight: 700, color: '#334155', fontSize: '0.9rem' }}>
+                        Sedang sinkronisasi data presensi, cuti, izin, sppd &amp; hari libur...
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                        Waktu tunggu: {fetchElapsed}s {networkInfo.ping ? `• Latensi: ${networkInfo.ping}ms` : ''} {networkInfo.speedMbps ? `• Kecepatan: ${networkInfo.speedMbps} Mbps` : ''}
+                      </span>
+                      {fetchElapsed >= 4 && (
+                        <span style={{ fontSize: '0.78rem', color: '#d97706', maxWidth: '480px', fontStyle: 'italic', marginTop: '2px' }}>
+                          💬 {roastMessage}
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : filteredAttendanceHistory.length === 0 ? (

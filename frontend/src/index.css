@@ -447,6 +447,61 @@ button[disabled] {
   animation: glowPulse 3s infinite ease-in-out;
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Toast Notification Styles */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 10000;
+  max-width: 440px;
+  width: calc(100% - 32px);
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: var(--text-dark);
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 0 1px 1px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-subtle);
+  animation: modalSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.toast-success {
+  border-left: 5px solid #10b981;
+}
+
+.toast-error {
+  border-left: 5px solid #ef4444;
+}
+
+.toast-warning {
+  border-left: 5px solid #f59e0b;
+}
+
+.toast-info {
+  border-left: 5px solid #0284c7;
+}
+
 /* RESPONSIVE BREAKPOINTS & DRAWER BEHAVIOR */
 .navbar-header {
   min-height: 56px;
