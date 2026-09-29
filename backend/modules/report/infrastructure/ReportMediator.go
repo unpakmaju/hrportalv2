@@ -23,13 +23,22 @@ func GetExportWorker() *ExportWorker {
 	return globalExportWorker
 }
 
-func RegisterModuleReport(db *gorm.DB) error {
+func RegisterModuleReport(db *gorm.DB, extraDBs ...*gorm.DB) error {
 	// Auto migrate rekap_laporan_bulanan table to ensure new columns (like total_libur) exist
 	// if err := db.AutoMigrate(&domain.RekapLaporanBulanan{}); err != nil {
 	// 	return err
 	// }
 
-	repo := NewReportRepository(db)
+	var simpegNewDB *gorm.DB
+	var simakDB *gorm.DB
+	if len(extraDBs) > 0 {
+		simpegNewDB = extraDBs[0]
+	}
+	if len(extraDBs) > 1 {
+		simakDB = extraDBs[1]
+	}
+
+	repo := NewReportRepository(db, simpegNewDB, simakDB)
 	globalReportRepo = repo
 	globalExportWorker = NewExportWorker(db, repo)
 

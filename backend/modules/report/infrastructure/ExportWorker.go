@@ -227,7 +227,7 @@ func (w *ExportWorker) processSingleJob(job *domain.ExportJob) {
 			Status           sql.NullString `gorm:"column:status"`
 		}
 		var izinRows []IzinRow
-		w.db.Raw("SELECT nip, nidn, tanggal_pengajuan, status FROM izin WHERE (status IS NULL OR status NOT IN ('Tolak Atasan', 'Tolak SDM', 'tolak atasan', 'tolak sdm'))").Scan(&izinRows)
+		w.db.Raw("SELECT nip, nidn, tanggal_pengajuan, status FROM izin WHERE LOWER(TRIM(status)) = 'terima sdm'").Scan(&izinRows)
 		for _, r := range izinRows {
 			addEvent(r.Nip.String, r.Nidn.String, r.TanggalPengajuan.String, exportEvent{
 				Type:   "izin",
@@ -244,7 +244,7 @@ func (w *ExportWorker) processSingleJob(job *domain.ExportJob) {
 			Status       sql.NullString `gorm:"column:status"`
 		}
 		var cutiRows []CutiRow
-		w.db.Raw("SELECT nip, nidn, tanggal_mulai, tanggal_akhir, status FROM cuti WHERE tanggal_mulai <= ? AND tanggal_akhir >= ? AND (status IS NULL OR status NOT IN ('Tolak Atasan', 'Tolak SDM', 'tolak atasan', 'tolak sdm'))", endDateStr, startDateStr).Scan(&cutiRows)
+		w.db.Raw("SELECT nip, nidn, tanggal_mulai, tanggal_akhir, status FROM cuti WHERE tanggal_mulai <= ? AND tanggal_akhir >= ? AND LOWER(TRIM(status)) = 'terima sdm'", endDateStr, startDateStr).Scan(&cutiRows)
 		for _, r := range cutiRows {
 			sDt, errS := parseCleanDate(r.TanggalMulai.String)
 			eDt, errE := parseCleanDate(r.TanggalAkhir.String)
@@ -268,7 +268,7 @@ func (w *ExportWorker) processSingleJob(job *domain.ExportJob) {
 			Status           sql.NullString `gorm:"column:status"`
 		}
 		var sppdRows []SppdRow
-		w.db.Raw("SELECT id, nip, nidn, tanggal_berangkat, tanggal_kembali, status FROM sppd WHERE tanggal_berangkat <= ? AND tanggal_kembali >= ? AND (status IS NULL OR status NOT IN ('Tolak Atasan', 'Tolak SDM', 'tolak atasan', 'tolak sdm'))", endDateStr, startDateStr).Scan(&sppdRows)
+		w.db.Raw("SELECT id, nip, nidn, tanggal_berangkat, tanggal_kembali, status FROM sppd WHERE tanggal_berangkat <= ? AND tanggal_kembali >= ? AND LOWER(TRIM(status)) = 'terima sdm'", endDateStr, startDateStr).Scan(&sppdRows)
 		for _, r := range sppdRows {
 			type Memb struct{ nip, nidn string }
 			members := []Memb{}

@@ -249,7 +249,7 @@ func main() {
 	})
 
 	mustStart("Report Module", func() error {
-		return reportInfrastructure.RegisterModuleReport(db)
+		return reportInfrastructure.RegisterModuleReport(db, dbSimpegNew, dbSimak)
 	})
 
 	mustStart("Attendance Module", func() error {

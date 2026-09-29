@@ -25,7 +25,7 @@ export const Sidebar = ({
 }) => {
   const { user, userRole, logout, isSdm, isBaum } = useAuth();
   const isAdminRole =
-    isSdm || isBaum || userRole === "sdm" || userRole === "baum";
+    isSdm || isBaum || userRole === "sdm" || userRole === "adm_sdm" || userRole === "baum";
 
   return (
     <>
