@@ -59,6 +59,22 @@ const formatJamMasuk = (str) => {
   return str;
 };
 
+const formatJamAbsen = (masukStr, keluarStr) => {
+  const masuk = formatJamMasuk(masukStr);
+  const keluar = formatJamMasuk(keluarStr);
+
+  if (masuk && keluar) {
+    return `${masuk} - ${keluar}`;
+  }
+  if (masuk) {
+    return `${masuk} - -`;
+  }
+  if (keluar) {
+    return `- - ${keluar}`;
+  }
+  return 'Hadir';
+};
+
 export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) => {
   const { showToast } = useToast();
 
@@ -315,7 +331,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
         const prd = p.prodi || '';
         const records = item.records || [];
 
-        const totalHadir = records.filter((r) => r.type === 'absen' && r.info?.masuk).length;
+        const totalHadir = records.filter((r) => r.type === 'absen' && (r.info?.masuk || r.info?.keluar)).length;
 
         const dayValues = dates.map((d) => {
           const dKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -324,7 +340,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
 
           const rec = records.find((r) => r.tanggal === dKey);
           if (rec) {
-            if (rec.type === 'absen') return `"${formatJamMasuk(rec.info?.masuk) || 'Hadir'}"`;
+            if (rec.type === 'absen') return `"${formatJamAbsen(rec.info?.masuk, rec.info?.keluar)}"`;
             if (rec.type === 'izin') return '"Izin"';
             if (rec.type === 'cuti') return '"Cuti"';
             if (rec.type === 'sppd') return '"SPPD"';
@@ -591,9 +607,9 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                       <th
                         key={dKey}
                         style={{
-                          width: '52px',
+                          minWidth: '85px',
                           textAlign: 'center',
-                          padding: '8px 2px',
+                          padding: '8px 4px',
                           background: isSunday || isHoliday ? '#fef2f2' : undefined,
                           color: isSunday || isHoliday ? '#ef4444' : undefined,
                         }}
@@ -628,7 +644,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                     const prodi = p.prodi || '';
                     const records = item.records || [];
 
-                    const totalHadir = records.filter((r) => r.type === 'absen' && r.info?.masuk).length;
+                    const totalHadir = records.filter((r) => r.type === 'absen' && (r.info?.masuk || r.info?.keluar)).length;
 
                     return (
                       <tr key={item.kode || index} style={{ borderBottom: '1px solid #f3f4f6' }}>
@@ -671,7 +687,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                             if (rec.type === 'absen') {
                               isHadir = true;
                               bg = '#dcfce7';
-                              text = formatJamMasuk(rec.info?.masuk) || 'Hadir';
+                              text = formatJamAbsen(rec.info?.masuk, rec.info?.keluar);
                               textColor = '#15803d';
                             } else if (rec.type === 'izin') {
                               bg = '#e0f2fe';
@@ -697,8 +713,9 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                                 backgroundColor: bg,
                                 color: textColor,
                                 fontWeight: isHadir ? 800 : 700,
-                                fontSize: isHadir ? '0.72rem' : '0.78rem',
-                                padding: '6px 2px',
+                                fontSize: isHadir ? '0.70rem' : '0.78rem',
+                                padding: '6px 4px',
+                                whiteSpace: 'nowrap',
                                 cursor: 'pointer',
                               }}
                               title={`Klik detail ${dKey}`}
@@ -889,10 +906,10 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                   </strong>
                 </div>
 
-                {!selectedCell.isUpacara && selectedCell.record.info?.keluar && (
+                {!selectedCell.isUpacara && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#e0f2fe', borderRadius: '8px' }}>
                     <span style={{ fontSize: '0.85rem', color: '#0369a1' }}>Jam Keluar:</span>
-                    <strong style={{ fontSize: '0.85rem', color: '#0c4a6e' }}>{selectedCell.record.info.keluar}</strong>
+                    <strong style={{ fontSize: '0.85rem', color: '#0c4a6e' }}>{selectedCell.record.info?.keluar || '-'}</strong>
                   </div>
                 )}
               </div>
