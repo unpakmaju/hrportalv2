@@ -601,6 +601,42 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
 
   const yearsList = Array.from({ length: Math.max(1, currentYearNum - 2000 + 1) }, (_, i) => 2000 + i);
 
+  // Daftar Layanan Cepat HR Portal (Sesuai Gambar 2: Cuti, Izin, SPPD, Slip Gaji)
+  const quickServiceList = useMemo(() => [
+    {
+      tabKey: 'cuti',
+      title: 'Pengajuan Cuti',
+      description: 'Cuti tahunan & sakit',
+      gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+      accentColor: '#8b5cf6',
+      icon: <CalendarClock size={20} />,
+    },
+    {
+      tabKey: 'izin',
+      title: 'Pengajuan Izin',
+      description: 'Izin tugas & sakit',
+      gradient: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+      accentColor: '#0284c7',
+      icon: <FileCheck size={20} />,
+    },
+    {
+      tabKey: 'sppd',
+      title: 'Pengajuan SPPD',
+      description: 'Perjalanan dinas',
+      gradient: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+      accentColor: '#4f46e5',
+      icon: <PlaneTakeoff size={20} />,
+    },
+    {
+      tabKey: 'slip-gaji',
+      title: 'Slip Gaji',
+      description: 'Rincian take home pay',
+      gradient: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+      accentColor: '#2563eb',
+      icon: <FileSpreadsheet size={20} />,
+    },
+  ], []);
+
   // Fetch All Dashboard Data with Granular Tracking & Network Diagnostics
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -2893,50 +2929,156 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
         </div>
       </div>
 
-      {/* QUICK SERVICES GRID */}
-      <div className="bm-card" style={{ padding: '28px', borderRadius: '24px' }}>
-        <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginBottom: '18px' }}>
-          Layanan Cepat HR Portal
-        </h2>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '18px' }}>
-          <div onClick={() => onNavigate('cuti')} className="bm-card-interactive" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div className="icon-bubble-3d" style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', color: '#ffffff' }}>
-              <CalendarClock size={20} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a' }}>Pengajuan Cuti</div>
-              <div style={{ fontSize: '0.775rem', color: '#64748b' }}>Cuti tahunan &amp; sakit</div>
-            </div>
+      {/* QUICK SERVICES - SPLIT VIEW WITH MODERN ILLUSTRATION & VERTICALLY SCROLLABLE MENU */}
+      <div
+        className="bm-card"
+        style={{
+          borderRadius: '24px',
+          background: '#ffffff',
+          boxShadow: 'var(--shadow-3d)',
+        }}
+      >
+        <div className="quick-services-layout">
+          {/* SISI KIRI: FULL COVER IMAGE (TANPA CARD, TANPA TEKS, OTOMATIS HILANG DI MOBILE) */}
+          <div className="quick-services-hero">
+            <img
+              src="/illustrations/ilustrasi.webp"
+              alt="HR Portal Mission"
+              className="quick-services-img"
+            />
           </div>
 
-          <div onClick={() => onNavigate('izin')} className="bm-card-interactive" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div className="icon-bubble-3d" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff' }}>
-              <FileCheck size={20} />
+          {/* SISI KANAN: DAFTAR MENU SCROLL VERTICAL MODERN (4 LAYANAN SESUAI GAMBAR 2) */}
+          <div className="quick-services-menu">
+            {/* Header Daftar Menu */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingBottom: '14px',
+                borderBottom: '1px solid #e2e8f0',
+                marginBottom: '4px',
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                  Layanan Cepat HR Portal
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px', display: 'block' }}>
+                  Akses instan formulir administrasi kepegawaian
+                </span>
+              </div>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  padding: '5px 12px',
+                  borderRadius: '9999px',
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  border: '1px solid #bfdbfe',
+                }}
+              >
+                4 Layanan Utama
+              </span>
             </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a' }}>Pengajuan Izin</div>
-              <div style={{ fontSize: '0.775rem', color: '#64748b' }}>Izin tugas &amp; sakit</div>
-            </div>
-          </div>
 
-          <div onClick={() => onNavigate('sppd')} className="bm-card-interactive" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div className="icon-bubble-3d" style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)', color: '#ffffff' }}>
-              <PlaneTakeoff size={20} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a' }}>Pengajuan SPPD</div>
-              <div style={{ fontSize: '0.775rem', color: '#64748b' }}>Perjalanan dinas</div>
-            </div>
-          </div>
+            {/* Scrollable Container with Custom Styled Scrollbar */}
+            <div
+              className="custom-v-scroll"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                maxHeight: '280px',
+                overflowY: 'auto',
+                paddingRight: '6px',
+                paddingTop: '2px',
+                paddingBottom: '2px',
+              }}
+            >
+              {quickServiceList.map((item, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => onNavigate(item.tabKey)}
+                  className="quick-service-item"
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '14px',
+                    background: '#f8fafc',
+                    border: '1.5px solid #e2e8f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02)',
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'translateX(4px)';
+                    e.currentTarget.style.borderColor = item.accentColor || '#6366f1';
+                    e.currentTarget.style.boxShadow = '0 6px 16px -4px rgba(15, 23, 42, 0.08)';
+                    e.currentTarget.style.background = '#ffffff';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = 'translateX(0)';
+                    e.currentTarget.style.borderColor = '#e2e8f0';
+                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.02)';
+                    e.currentTarget.style.background = '#f8fafc';
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+                    <div
+                      className="icon-bubble-3d"
+                      style={{
+                        background: item.gradient,
+                        color: '#ffffff',
+                        width: '42px',
+                        height: '42px',
+                        borderRadius: '12px',
+                        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.12)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {item.icon}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.925rem', color: '#0f172a' }}>
+                        {item.title}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.785rem',
+                          color: '#64748b',
+                          marginTop: '2px',
+                        }}
+                      >
+                        {item.description}
+                      </div>
+                    </div>
+                  </div>
 
-          <div onClick={() => onNavigate('slip-gaji')} className="bm-card-interactive" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div className="icon-bubble-3d" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', color: '#ffffff' }}>
-              <FileSpreadsheet size={20} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a' }}>Slip Gaji</div>
-              <div style={{ fontSize: '0.775rem', color: '#64748b' }}>Rincian take home pay</div>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '10px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#64748b',
+                      flexShrink: 0,
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <ChevronRight size={16} />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
