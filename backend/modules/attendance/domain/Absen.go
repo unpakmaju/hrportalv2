@@ -20,8 +20,19 @@ type Absen struct {
 	AbsenKeluar    *time.Time `gorm:"column:absen_keluar" json:"absen_keluar"`
 	CatatanTelat   *string    `gorm:"column:catatan_telat" json:"catatan_telat"`
 	CatatanPulang  *string    `gorm:"column:catatan_pulang" json:"catatan_pulang"`
-	Note           string     `gorm:"column:note;type:varchar(10)" json:"note"`
+	Note           string     `gorm:"column:note;type:varchar(255)" json:"note"`
 	OtomatisKeluar bool       `gorm:"column:otomatis_keluar" json:"otomatis_keluar"`
+
+	// GPS (Absen Masuk) & IP
+	Latitude              *float64   `gorm:"column:latitude;type:double" json:"latitude"`
+	Longitude             *float64   `gorm:"column:longitude;type:double" json:"longitude"`
+	IpAddress             *string    `gorm:"column:ip_address;type:varchar(100)" json:"ip_address"`
+	IpKeluar              *string    `gorm:"column:ip_keluar;type:varchar(100)" json:"ip_keluar"`
+
+	// Catatan Luar Kampus
+	CatatanLuarUnpak      *string    `gorm:"column:catatan_luar_unpak;type:text" json:"catatan_luar_unpak"`
+	CatatanHasilLuarUnpak *string    `gorm:"column:catatan_hasil_luar_unpak;type:text" json:"catatan_hasil_luar_unpak"`
+
 	CreatedAt      *time.Time `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt      *time.Time `gorm:"column:updated_at" json:"updated_at"`
 	IsCreated      bool       `gorm:"-" json:"is_created,omitempty"`

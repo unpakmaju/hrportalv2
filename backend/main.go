@@ -26,6 +26,7 @@ import (
 
 	accountInfrastructure "hrportal_backend/modules/account/infrastructure"
 	accountPresentation "hrportal_backend/modules/account/presentation"
+	attendanceDomain "hrportal_backend/modules/attendance/domain"
 	attendanceInfrastructure "hrportal_backend/modules/attendance/infrastructure"
 	attendancePresentation "hrportal_backend/modules/attendance/presentation"
 
@@ -44,6 +45,7 @@ import (
 	izinInfrastructure "hrportal_backend/modules/izin/infrastructure"
 	izinPresentation "hrportal_backend/modules/izin/presentation"
 
+	ceremonyAttendanceDomain "hrportal_backend/modules/ceremony_attendance/domain"
 	ceremonyAttendanceInfrastructure "hrportal_backend/modules/ceremony_attendance/infrastructure"
 	ceremonyAttendancePresentation "hrportal_backend/modules/ceremony_attendance/presentation"
 
@@ -222,7 +224,7 @@ func main() {
 		var err error
 		db, err = tryConnectDB("DB_HRPORTAL", "unpak_hrportal")
 		if err == nil && db != nil {
-			_ = db.AutoMigrate(&notificationDomain.NotificationModel{}, &notificationDomain.FcmTokenModel{})
+			_ = db.AutoMigrate(&notificationDomain.NotificationModel{}, &notificationDomain.FcmTokenModel{}, &attendanceDomain.Absen{}, &ceremonyAttendanceDomain.MasterUpacara{}, &ceremonyAttendanceDomain.AbsenUpacara{})
 		} else {
 			log.Printf("[DATABASE ERROR] Failed to connect to MySQL database! err: %v", err)
 		}
@@ -303,10 +305,10 @@ func main() {
 	accountPresentation.ModuleAccount(app)
 	attendancePresentation.ModuleAttendance(app)
 	leavePresentation.ModuleLeave(app)
-	masterdataPresentation.ModuleMasterData(app, db, dbSimpegNew)
+	masterdataPresentation.ModuleMasterData(app, db, dbSimak, dbSimpegNew)
 	sppdPresentation.ModuleSppd(app)
 	izinPresentation.ModuleIzin(app)
-	ceremonyAttendancePresentation.ModuleCeremonyAttendance(app)
+	ceremonyAttendancePresentation.ModuleCeremonyAttendance(app, db)
 	calendarPresentation.ModuleCalendar(app)
 	reportPresentation.ModuleReport(app)
 	holidayPresentation.ModuleHoliday(app, db)

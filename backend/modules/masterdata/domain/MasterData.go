@@ -10,7 +10,7 @@ type Fakultas struct {
 }
 
 func (Fakultas) TableName() string {
-	return "connect_m_fakultas"
+	return "m_fakultas"
 }
 
 type Prodi struct {
@@ -18,6 +18,10 @@ type Prodi struct {
 	NamaProdi    string `gorm:"column:nama_prodi" json:"nama_prodi"`
 	KodeFakultas string `gorm:"column:kode_fakultas" json:"kode_fakultas"`
 	NamaFakultas string `gorm:"column:nama_fakultas" json:"nama_fakultas"`
+	KodeJenjang  string `gorm:"column:kode_jenjang" json:"kode_jenjang"`
+	Jenjang      string `gorm:"column:jenjang" json:"jenjang"`
+	Gelar        string `gorm:"column:gelar" json:"gelar"`
+	GelarPanjang string `gorm:"column:gelar_panjang" json:"gelar_panjang"`
 
 	ID         string `gorm:"-" json:"id"`
 	FakultasID string `gorm:"-" json:"fakultas_id"`
@@ -26,7 +30,7 @@ type Prodi struct {
 }
 
 func (Prodi) TableName() string {
-	return "connect_r_prodi"
+	return "m_program_studi"
 }
 
 type JenisCuti struct {

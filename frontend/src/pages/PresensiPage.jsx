@@ -19,6 +19,7 @@ import { useToast } from '../components/Toast';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { getLocalDateStr } from '../utils/dateFormatter';
+import { checkAttendanceLocation, getCurrentCoordinates, isWithinCampus } from '../utils/locationHelper';
 
 export const PresensiPage = () => {
   const { user } = useAuth();
@@ -28,13 +29,47 @@ export const PresensiPage = () => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [todayRecord, setTodayRecord] = useState(null);
   const [todayCheckIn, setTodayCheckIn] = useState(null);
   const [todayCheckOut, setTodayCheckOut] = useState(null);
 
-  // Modal for Reason
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalType, setModalType] = useState('late'); // 'late' or 'early'
-  const [reasonText, setReasonText] = useState('');
+  // Network & GPS
+  const [ipAddress, setIpAddress] = useState('');
+  const [currentCoords, setCurrentCoords] = useState(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+
+  useEffect(() => {
+    fetch('/cdn-cgi/trace', { cache: 'no-store' })
+      .then((res) => res.text())
+      .then((text) => {
+        const match = text.match(/ip=([^\r\n]+)/);
+        if (match && match[1]) setIpAddress(match[1].trim());
+      })
+      .catch(() => {});
+
+    setGeoLoading(true);
+    getCurrentCoordinates().then((coords) => {
+      if (coords) setCurrentCoords(coords);
+      setGeoLoading(false);
+    });
+  }, []);
+
+  const locationStatus = checkAttendanceLocation(
+    currentCoords?.latitude || 0,
+    currentCoords?.longitude || 0,
+    ipAddress
+  );
+
+  // Modals for Rules 1, 1.a, 2, 2.a, 3, 3.a, 4
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [checkInConditions, setCheckInConditions] = useState({ isLate: false, isOutside: false });
+  const [lateReason, setLateReason] = useState('');
+  const [outsideReason, setOutsideReason] = useState('');
+
+  const [showCheckOutModal, setShowCheckOutModal] = useState(false);
+  const [checkOutConditions, setCheckOutConditions] = useState({ isEarly: false, isOutside: false });
+  const [earlyExitReason, setEarlyExitReason] = useState('');
+  const [outsideResult, setOutsideResult] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,14 +93,19 @@ export const PresensiPage = () => {
       setHistory(items);
 
       const todayStr = getLocalDateStr();
-      const todayRecord = items.find((item) => {
+      const foundToday = items.find((item) => {
         const dateStr = item.tanggal || (item.absen_masuk ? getLocalDateStr(item.absen_masuk) : '');
         return dateStr === todayStr;
       });
 
-      if (todayRecord) {
-        setTodayCheckIn(todayRecord.absen_masuk || todayRecord.check_in || null);
-        setTodayCheckOut(todayRecord.absen_keluar || todayRecord.check_out || null);
+      if (foundToday) {
+        setTodayRecord(foundToday);
+        setTodayCheckIn(foundToday.absen_masuk || foundToday.check_in || null);
+        setTodayCheckOut(foundToday.absen_keluar || foundToday.check_out || null);
+      } else {
+        setTodayRecord(null);
+        setTodayCheckIn(null);
+        setTodayCheckOut(null);
       }
     } catch (err) {
       console.warn('Gagal memuat riwayat presensi:', err);
@@ -80,24 +120,42 @@ export const PresensiPage = () => {
 
   const hours = currentTime.getHours();
   const minutes = currentTime.getMinutes();
-  const isLate = hours > 8 || (hours === 8 && minutes > 3);
+  const isLate = hours > 8 || (hours === 8 && minutes > 0);
 
-  const handleCheckInClick = () => {
+  const handleCheckInClick = async () => {
     if (todayCheckIn) {
       showToast('Anda sudah melakukan Absen Masuk hari ini.', 'info');
       return;
     }
 
-    if (isLate) {
-      setModalType('late');
-      setReasonText('');
-      setIsModalOpen(true);
-    } else {
-      executeCheckIn('');
+    let coords = currentCoords;
+    if (!coords || (coords.latitude === 0 && coords.longitude === 0)) {
+      setGeoLoading(true);
+      const freshCoords = await getCurrentCoordinates();
+      setGeoLoading(false);
+      if (freshCoords) {
+        coords = freshCoords;
+        setCurrentCoords(freshCoords);
+      }
     }
+
+    const locCheck = checkAttendanceLocation(coords?.latitude || 0, coords?.longitude || 0, ipAddress);
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    const late = h > 8 || (h === 8 && m > 0);
+    const outside = !locCheck.inRange;
+
+    if (late || outside) {
+      setCheckInConditions({ isLate: late, isOutside: outside });
+      setShowCheckInModal(true);
+      return;
+    }
+
+    executeCheckIn({});
   };
 
-  const handleCheckOutClick = () => {
+  const handleCheckOutClick = async () => {
     if (!todayCheckIn) {
       showToast('Anda belum melakukan Absen Masuk hari ini.', 'warning');
       return;
@@ -107,24 +165,52 @@ export const PresensiPage = () => {
       return;
     }
 
-    const checkInTime = new Date(todayCheckIn);
-    const now = new Date();
-    const diffMinutes = Math.floor((now - checkInTime) / (1000 * 60));
+    let coords = currentCoords;
+    if (!coords || (coords.latitude === 0 && coords.longitude === 0)) {
+      setGeoLoading(true);
+      const freshCoords = await getCurrentCoordinates();
+      setGeoLoading(false);
+      if (freshCoords) {
+        coords = freshCoords;
+        setCurrentCoords(freshCoords);
+      }
+    }
 
+    const locCheck = checkAttendanceLocation(coords?.latitude || 0, coords?.longitude || 0, ipAddress);
+    const now = new Date();
+    const checkInTime = new Date(todayCheckIn || todayRecord?.absen_masuk);
+    const diffMinutes = Math.floor((now - checkInTime) / (1000 * 60));
     const isFriday = now.getDay() === 5;
     const requiredHours = isFriday ? 6 : 7;
+    const early = diffMinutes < (requiredHours * 60);
 
-    if (diffMinutes < (requiredHours * 60)) {
-      setModalType('early');
-      setReasonText('');
-      setIsModalOpen(true);
-    } else {
-      executeCheckOut('');
+    const wasOutside = Boolean(
+      todayRecord?.catatan_luar_unpak || 
+      (todayRecord?.latitude && !isWithinCampus(todayRecord.latitude, todayRecord.longitude))
+    );
+    const isCurrentlyOutside = !locCheck.inRange;
+    const isOutsideWork = wasOutside || isCurrentlyOutside;
+
+    if (early) {
+      setCheckOutConditions({ isEarly: early, isOutside: isOutsideWork });
+      setShowCheckOutModal(true);
+      return;
     }
+
+    executeCheckOut({});
   };
 
-  const executeCheckIn = async (reason) => {
+  const executeCheckIn = async (notes = {}) => {
     setSubmitting(true);
+    let coords = currentCoords;
+    const locCheck = checkAttendanceLocation(coords?.latitude || 0, coords?.longitude || 0, ipAddress);
+    const now = new Date();
+    const late = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 0);
+    const outside = !locCheck.inRange;
+
+    const noteTelat = notes.lateReason || (late ? lateReason : '');
+    const noteLuar = notes.outsideReason || (outside ? outsideReason : '');
+
     try {
       await apiClient.post('/api/v2/attendance/check-in', {
         nip: user?.nip || user?.username || '',
@@ -133,13 +219,20 @@ export const PresensiPage = () => {
         unit: user?.unit || '',
         fakultas: user?.fakultas || '',
         prodi: user?.prodi || '',
-        latitude: -6.5976,
-        longitude: 106.8066,
-        note: reason || (isLate ? 'Telat Masuk' : 'Tepat Waktu'),
+        latitude: coords?.latitude || 0,
+        longitude: coords?.longitude || 0,
+        ip_address: ipAddress,
+        ip: ipAddress,
+        catatan_telat: late ? noteTelat : '',
+        catatan_luar_unpak: outside ? noteLuar : '',
+        catatan_pulang: '',
+        note: [late ? noteTelat : '', outside ? noteLuar : ''].filter(Boolean).join(' | '),
       });
 
-      showToast('Absen Masuk Berhasil!', 'success');
-      setIsModalOpen(false);
+      showToast(`Absen Masuk Berhasil! Lokasi: ${locCheck.locationName}`, 'success');
+      setShowCheckInModal(false);
+      setLateReason('');
+      setOutsideReason('');
       fetchAttendanceHistory();
     } catch (err) {
       showToast(err.message || 'Gagal melakukan Absen Masuk', 'error');
@@ -148,35 +241,45 @@ export const PresensiPage = () => {
     }
   };
 
-  const executeCheckOut = async (reason) => {
+  const executeCheckOut = async (notes = {}) => {
     setSubmitting(true);
+    let coords = currentCoords;
+    const locCheck = checkAttendanceLocation(coords?.latitude || 0, coords?.longitude || 0, ipAddress);
+    const now = new Date();
+    const checkInTime = new Date(todayCheckIn || todayRecord?.absen_masuk);
+    const diffMinutes = Math.floor((now - checkInTime) / (1000 * 60));
+    const isFriday = now.getDay() === 5;
+    const requiredHours = isFriday ? 6 : 7;
+    const early = diffMinutes < (requiredHours * 60);
+
+    const wasOutside = Boolean(
+      todayRecord?.catatan_luar_unpak || 
+      (todayRecord?.latitude && !isWithinCampus(todayRecord.latitude, todayRecord.longitude))
+    );
+    const isOutsideWork = wasOutside || !locCheck.inRange;
+
+    const notePulang = notes.earlyExitReason || (early ? earlyExitReason : '');
+    const noteHasil = notes.outsideResult || ((early && isOutsideWork) ? outsideResult : '');
+
     try {
       await apiClient.post('/api/v2/attendance/check-out', {
         nip: user?.nip || user?.username || '',
         nidn: user?.nidn || '',
-        note: reason || 'Absen Keluar',
+        ip_address: ipAddress,
+        ip: ipAddress,
+        catatan_pulang: early ? notePulang : '',
+        catatan_hasil_luar_unpak: (early && isOutsideWork) ? noteHasil : '',
       });
 
-      showToast('Absen Keluar Berhasil!', 'success');
-      setIsModalOpen(false);
+      showToast(`Absen Keluar Berhasil! Lokasi: ${locCheck.locationName}`, 'success');
+      setShowCheckOutModal(false);
+      setEarlyExitReason('');
+      setOutsideResult('');
       fetchAttendanceHistory();
     } catch (err) {
       showToast(err.message || 'Gagal melakukan Absen Keluar', 'error');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleModalSubmit = (e) => {
-    e.preventDefault();
-    if (!reasonText.trim()) {
-      showToast('Harap masukkan alasan terlebih dahulu.', 'warning');
-      return;
-    }
-    if (modalType === 'late') {
-      executeCheckIn(reasonText.trim());
-    } else {
-      executeCheckOut(reasonText.trim());
     }
   };
 
@@ -264,25 +367,50 @@ export const PresensiPage = () => {
           </p>
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            background: '#ffffff',
-            padding: '12px 20px',
-            borderRadius: '16px',
-            border: '1px solid #e2e8f0',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <Clock size={24} color="#0284c7" />
-          <div>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: '#0284c7' }}>
-              {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} WIB
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: '#ffffff',
+              padding: '12px 18px',
+              borderRadius: '16px',
+              border: '1px solid #e2e8f0',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            <MapPin size={22} color={locationStatus.inRange ? "#10b981" : "#f59e0b"} />
+            <div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: locationStatus.inRange ? '#15803d' : '#b45309' }}>
+                {locationStatus.locationName}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                {currentCoords ? `Lat: ${currentCoords.latitude.toFixed(4)}, Lon: ${currentCoords.longitude.toFixed(4)}` : (geoLoading ? 'Mendeteksi GPS...' : 'GPS Belum Siap')}
+              </div>
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-              {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              background: '#ffffff',
+              padding: '12px 20px',
+              borderRadius: '16px',
+              border: '1px solid #e2e8f0',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            <Clock size={24} color="#0284c7" />
+            <div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: '#0284c7' }}>
+                {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} WIB
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </div>
             </div>
           </div>
         </div>
@@ -319,14 +447,14 @@ export const PresensiPage = () => {
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Absen Masuk</h3>
-                  <p style={{ fontSize: '0.775rem', color: '#64748b' }}>Batas waktu 08:03 WIB</p>
+                  <p style={{ fontSize: '0.775rem', color: '#64748b' }}>Batas waktu 08:00 WIB</p>
                 </div>
               </div>
 
               {todayCheckIn ? (
                 <Badge variant="success">Sudah Masuk</Badge>
               ) : isLate ? (
-                <Badge variant="warning">Terlambat (&gt;08:03)</Badge>
+                <Badge variant="warning">Terlambat (&gt;08:00)</Badge>
               ) : (
                 <Badge variant="info">Tepat Waktu</Badge>
               )}
@@ -396,7 +524,7 @@ export const PresensiPage = () => {
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Absen Keluar</h3>
-                  <p style={{ fontSize: '0.775rem', color: '#64748b' }}>Pulang Kerja Hari Ini</p>
+                  <p style={{ fontSize: '0.775rem', color: '#64748b' }}>Minimal {new Date().getDay() === 5 ? '6 jam' : '7 jam'} kerja</p>
                 </div>
               </div>
 
@@ -531,60 +659,77 @@ export const PresensiPage = () => {
         )}
       </div>
 
-      {/* Modal for Late / Early Reason */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => !submitting && setIsModalOpen(false)}
-        title={modalType === 'late' ? 'Alasan Telat Masuk' : 'Alasan Pulang Cepat'}
+      {/* CHECK-IN MODAL (TELAT &/ATAU DI LUAR UNPAK) */}
+      <Modal 
+        isOpen={showCheckInModal} 
+        onClose={() => !submitting && setShowCheckInModal(false)} 
+        title={
+          checkInConditions.isLate && checkInConditions.isOutside
+            ? "Konfirmasi Absen Masuk (Telat & Luar Kampus)"
+            : checkInConditions.isLate
+            ? "Alasan Telat Masuk Presensi"
+            : "Alasan Berada di Luar Kampus UNPAK"
+        }
       >
-        <form onSubmit={handleModalSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div
-            style={{
-              padding: '12px 14px',
-              borderRadius: '12px',
-              background: modalType === 'late' ? '#fffbeb' : '#fef2f2',
-              border: `1px solid ${modalType === 'late' ? '#fde68a' : '#fecaca'}`,
-              color: modalType === 'late' ? '#b45309' : '#b91c1c',
-              fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-            }}
-          >
-            <AlertCircle size={20} style={{ flexShrink: 0 }} />
-            <div>
-              {modalType === 'late'
-                ? 'Waktu masuk Anda melebihi 08:03 WIB. Harap berikan alasan keterlambatan Anda.'
-                : `Durasi kerja kurang dari ${new Date().getDay() === 5 ? '6 jam (Hari Jumat)' : '7 jam'}. Harap beri alasan mendesak untuk pulang cepat.`}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Info Alerts */}
+          {checkInConditions.isLate && (
+            <div style={{ display: 'flex', gap: '10px', padding: '12px 14px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '0.825rem', fontWeight: 500, alignItems: 'flex-start' }}>
+              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>Jam masuk Anda melebihi <strong>08:00 WIB</strong>. Harap cantumkan alasan keterlambatan Anda.</div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, color: '#ef4444', marginBottom: '6px' }}>
-              {modalType === 'late' ? (
-                <>Catatan Telat Masuk <span style={{ color: '#ef4444', fontWeight: 800 }}>*</span></>
-              ) : (
-                <>Catatan Pulang Cepat <span style={{ color: '#ef4444', fontWeight: 800 }}>*</span></>
-              )}
-            </label>
-            <textarea
-              className="form-textarea"
-              rows={4}
-              placeholder={modalType === 'late' ? 'Contoh: Kendala cuaca hujan deras / kemacetan lalulintas...' : 'Contoh: Urusan keluarga mendesak / keperluan medis...'}
-              value={reasonText}
-              onChange={(e) => setReasonText(e.target.value)}
-              required
-              disabled={submitting}
-            />
-          </div>
+          {checkInConditions.isOutside && (
+            <div style={{ display: 'flex', gap: '10px', padding: '12px 14px', borderRadius: '12px', background: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', fontSize: '0.825rem', fontWeight: 500, alignItems: 'flex-start' }}>
+              <MapPin size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>Anda terdeteksi <strong>berada di luar area Kampus UNPAK</strong> (tidak berada dalam radius GPS UNPAK / Teknik / Lapangan dan tidak terhubung ke WiFi UNPAK). Harap cantumkan alasan berada di luar UNPAK.</div>
+            </div>
+          )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '10px' }}>
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
+          {/* Catatan Telat Input */}
+          {checkInConditions.isLate && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#ef4444', marginBottom: '6px' }}>
+                Alasan Keterlambatan <span style={{ color: '#ef4444', fontWeight: 800 }}>*</span>
+              </label>
+              <textarea
+                className="form-textarea"
+                rows={3}
+                placeholder="Tuliskan alasan keterlambatan (misal: Kemacetan lalu lintas / Cuaca)..."
+                value={lateReason}
+                onChange={(e) => setLateReason(e.target.value)}
+                required
+                disabled={submitting}
+              />
+            </div>
+          )}
+
+          {/* Catatan Luar UNPAK Input */}
+          {checkInConditions.isOutside && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#d97706', marginBottom: '6px' }}>
+                Alasan Berada di Luar UNPAK <span style={{ color: '#ef4444', fontWeight: 800 }}>*</span>
+              </label>
+              <textarea
+                className="form-textarea"
+                rows={3}
+                placeholder="Tuliskan alasan bertugas/berada di luar kampus (misal: Dinas luar, survei lapangan, rapat eksternal)..."
+                value={outsideReason}
+                onChange={(e) => setOutsideReason(e.target.value)}
+                required
+                disabled={submitting}
+              />
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
+            <button 
+              type="button" 
+              onClick={() => setShowCheckInModal(false)} 
               disabled={submitting}
               style={{
-                padding: '10px 18px',
+                padding: '9px 18px',
                 borderRadius: '10px',
                 border: '1px solid #e2e8f0',
                 background: '#ffffff',
@@ -596,24 +741,137 @@ export const PresensiPage = () => {
               Batal
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={() => {
+                if (checkInConditions.isLate && !lateReason.trim()) {
+                  showToast('Harap isi alasan keterlambatan terlebih dahulu.', 'warning');
+                  return;
+                }
+                if (checkInConditions.isOutside && !outsideReason.trim()) {
+                  showToast('Harap isi alasan berada di luar UNPAK terlebih dahulu.', 'warning');
+                  return;
+                }
+                executeCheckIn({ lateReason: lateReason.trim(), outsideReason: outsideReason.trim() });
+              }}
               disabled={submitting}
               style={{
-                padding: '10px 20px',
+                padding: '9px 20px',
                 borderRadius: '10px',
                 border: 'none',
-                background: modalType === 'late'
-                  ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
-                  : 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                 color: '#ffffff',
                 fontWeight: 700,
                 cursor: submitting ? 'not-allowed' : 'pointer',
               }}
             >
-              {submitting ? 'Mengirim...' : 'Kirim Presensi'}
+              {submitting ? 'Menyimpan...' : 'Simpan & Absen Masuk'}
             </button>
           </div>
-        </form>
+        </div>
+      </Modal>
+
+      {/* CHECK-OUT MODAL (PULANG CEPAT &/ATAU HASIL LUAR UNPAK) */}
+      <Modal 
+        isOpen={showCheckOutModal} 
+        onClose={() => !submitting && setShowCheckOutModal(false)} 
+        title={
+          checkOutConditions.isOutside
+            ? "Alasan Pulang Cepat & Hasil Kerja di Luar UNPAK"
+            : "Alasan Pulang Cepat Presensi"
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', gap: '10px', padding: '12px 14px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '0.825rem', fontWeight: 500, alignItems: 'flex-start' }}>
+            <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              Durasi presensi Anda <strong>kurang dari {new Date().getDay() === 5 ? '6 jam (Hari Jumat)' : '7 jam'}</strong>. Harap masukkan alasan pulang cepat.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#ef4444', marginBottom: '6px' }}>
+              Alasan Pulang Cepat <span style={{ color: '#ef4444', fontWeight: 800 }}>*</span>
+            </label>
+            <textarea
+              className="form-textarea"
+              rows={3}
+              placeholder="Tuliskan alasan pulang cepat (misal: Urusan keluarga mendesak / Keperluan medis)..."
+              value={earlyExitReason}
+              onChange={(e) => setEarlyExitReason(e.target.value)}
+              required
+              disabled={submitting}
+            />
+          </div>
+
+          {checkOutConditions.isOutside && (
+            <div>
+              <div style={{ display: 'flex', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontSize: '0.8rem', fontWeight: 500, marginBottom: '8px' }}>
+                <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>Karena Anda beraktivitas di luar Kampus UNPAK hari ini, silakan laporkan hasil pekerjaan yang telah diselesaikan.</div>
+              </div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#15803d', marginBottom: '6px' }}>
+                Apa hasil yang telah Anda lakukan di luar UNPAK? <span style={{ color: '#ef4444', fontWeight: 800 }}>*</span>
+              </label>
+              <textarea
+                className="form-textarea"
+                rows={3}
+                placeholder="Tuliskan laporan hasil pekerjaan / kegiatan yang telah dilaksanakan di luar kampus..."
+                value={outsideResult}
+                onChange={(e) => setOutsideResult(e.target.value)}
+                required
+                disabled={submitting}
+              />
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
+            <button 
+              type="button" 
+              onClick={() => setShowCheckOutModal(false)} 
+              disabled={submitting}
+              style={{
+                padding: '9px 18px',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                background: '#ffffff',
+                color: '#64748b',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!earlyExitReason.trim()) {
+                  showToast('Harap isi alasan pulang cepat terlebih dahulu.', 'warning');
+                  return;
+                }
+                if (checkOutConditions.isOutside && !outsideResult.trim()) {
+                  showToast('Harap isi hasil yang telah Anda lakukan di luar UNPAK.', 'warning');
+                  return;
+                }
+                executeCheckOut({
+                  earlyExitReason: earlyExitReason.trim(),
+                  outsideResult: outsideResult.trim(),
+                });
+              }}
+              disabled={submitting}
+              style={{
+                padding: '9px 20px',
+                borderRadius: '10px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                color: '#ffffff',
+                fontWeight: 700,
+                cursor: submitting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {submitting ? 'Menyimpan...' : 'Simpan & Absen Keluar'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -1305,7 +1305,6 @@ func (r *ReportRepository) GetFlatLaporanMergedParallel(ctx context.Context, tan
 }
 
 func (r *ReportRepository) CalculateReport(ctx context.Context) (map[string]interface{}, error) {
-	// Query unique employees from local activity tables to bypass view_pegawai (connect_m_dosen, connect_e_pribadi, connect_n_pribadi queries)
 	type employee struct {
 		Nip      string `gorm:"column:nip"`
 		Nidn     string `gorm:"column:nidn"`

@@ -8,6 +8,7 @@ import {
   PlaneTakeoff,
   FileSpreadsheet,
   CreditCard,
+  Flag,
   LogOut,
   Search,
   Circle,
@@ -312,6 +313,39 @@ export const Sidebar = ({
                   color={activeTab === "libur" ? "#10B981" : "#6B7280"}
                 />
                 {!isCollapsed && <span>Master Libur</span>}
+              </button>
+
+              <button
+                onClick={() => {
+                  onSelectTab("upacara");
+                  onCloseMobile();
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  width: "100%",
+                  padding: isCollapsed ? "10px" : "8px 12px",
+                  justifyContent: isCollapsed ? "center" : "flex-start",
+                  borderRadius: "8px",
+                  border: "none",
+                  backgroundColor:
+                    activeTab === "upacara" ? "#FFFFFF" : "transparent",
+                  color: activeTab === "upacara" ? "#111827" : "#6B7280",
+                  fontWeight: activeTab === "upacara" ? 700 : 500,
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                  boxShadow:
+                    activeTab === "upacara"
+                      ? "0 1px 2px rgba(0,0,0,0.05), 0 0 0 1px #E5E7EB"
+                      : "none",
+                }}
+              >
+                <Flag
+                  size={18}
+                  color={activeTab === "upacara" ? "#10B981" : "#6B7280"}
+                />
+                {!isCollapsed && <span>Master Upacara</span>}
               </button>
 
               <button

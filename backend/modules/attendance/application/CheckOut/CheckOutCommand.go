@@ -3,6 +3,7 @@ package CheckOut
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	common "hrportal_backend/common/domain"
@@ -16,9 +17,11 @@ import (
 )
 
 type CheckOutCommand struct {
-	Nip  string `json:"nip"`
-	Nidn string `json:"nidn"`
-	Note string `json:"catatan_pulang"`
+	Nip                   string `json:"nip"`
+	Nidn                  string `json:"nidn"`
+	Note                  string `json:"catatan_pulang"`
+	IpAddress             string `json:"ip_address"`
+	CatatanHasilLuarUnpak string `json:"catatan_hasil_luar_unpak"`
 }
 
 func (c CheckOutCommand) Validate() error {
@@ -67,7 +70,20 @@ func (h *CheckOutCommandHandler) Handle(ctx context.Context, cmd *CheckOutComman
 	existing.AbsenKeluar = &now
 	existing.UpdatedAt = &now
 	existing.IsCreated = isFirstCheckOut
-	existing.CatatanPulang = helper.StrPtr(cmd.Note)
+	if cmd.Note != "" {
+		existing.CatatanPulang = helper.StrPtr(cmd.Note)
+	}
+
+
+	if trimmedIp := strings.TrimSpace(cmd.IpAddress); trimmedIp != "" {
+		existing.IpKeluar = &trimmedIp
+		if existing.IpAddress == nil {
+			existing.IpAddress = &trimmedIp
+		}
+	}
+	if trimmedHasil := strings.TrimSpace(cmd.CatatanHasilLuarUnpak); trimmedHasil != "" {
+		existing.CatatanHasilLuarUnpak = &trimmedHasil
+	}
 
 	if err := h.attendanceRepo.UpdateAbsen(ctx, existing); err != nil {
 		return common.FailureValue[*domain.Absen](domain.AttendanceNotFound()), err

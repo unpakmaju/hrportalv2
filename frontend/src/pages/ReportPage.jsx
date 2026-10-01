@@ -127,8 +127,8 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
           const resFak = await apiClient.get('/api/v2/masterdata/fakultas');
           fakData = Array.isArray(resFak) ? resFak : (resFak?.data || resFak?.list_data || []);
         } catch (e) {
-          const v2Fak = await apiClient.get('/api/v2/masterdata/fakultas').catch(() => []);
-          fakData = Array.isArray(v2Fak) ? v2Fak : (v2Fak?.data || v2Fak?.list_data || []);
+          const v1Fak = await apiClient.get('/api/masterdata/fakultas').catch(() => []);
+          fakData = Array.isArray(v1Fak) ? v1Fak : (v1Fak?.data || v1Fak?.list_data || []);
         }
 
         let prodData = [];
@@ -136,8 +136,8 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
           const resProd = await apiClient.get('/api/v2/masterdata/prodi');
           prodData = Array.isArray(resProd) ? resProd : (resProd?.data || resProd?.list_data || []);
         } catch (e) {
-          const v2Prod = await apiClient.get('/api/v2/masterdata/prodi').catch(() => []);
-          prodData = Array.isArray(v2Prod) ? v2Prod : (v2Prod?.data || v2Prod?.list_data || []);
+          const v1Prod = await apiClient.get('/api/masterdata/prodi').catch(() => []);
+          prodData = Array.isArray(v1Prod) ? v1Prod : (v1Prod?.data || v1Prod?.list_data || []);
         }
 
         let uData = [];
@@ -145,13 +145,25 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
           const resUnit = await apiClient.get('/api/v2/masterdata/unit');
           uData = Array.isArray(resUnit) ? resUnit : (resUnit?.data || resUnit?.list_data || []);
         } catch (e) {
-          const v2Unit = await apiClient.get('/api/v2/masterdata/unit').catch(() => []);
-          uData = Array.isArray(v2Unit) ? v2Unit : (v2Unit?.data || v2Unit?.list_data || []);
+          const v1Unit = await apiClient.get('/api/masterdata/unit').catch(() => []);
+          uData = Array.isArray(v1Unit) ? v1Unit : (v1Unit?.data || v1Unit?.list_data || []);
         }
 
-        setFakultasList(fakData.filter(f => f && (f.nama || f.nama_fakultas || f.fakultas || f.kode)));
-        setProdiList(prodData.filter(p => p && (p.nama || p.nama_prodi || p.prodi || p.kode)));
-        setUnitList(uData.filter(u => u && (u.nama || u.nama_unit || u.unit || u.kode_unit)));
+        setFakultasList(
+          fakData
+            .map((f) => (typeof f === 'string' ? { nama: f, name: f } : f))
+            .filter((f) => f && (f.nama || f.nama_fakultas || f.fakultas || f.kode))
+        );
+        setProdiList(
+          prodData
+            .map((p) => (typeof p === 'string' ? { nama: p, name: p } : p))
+            .filter((p) => p && (p.nama || p.nama_prodi || p.prodi || p.kode))
+        );
+        setUnitList(
+          uData
+            .map((u) => (typeof u === 'string' ? { nama: u, nama_unit: u } : u))
+            .filter((u) => u && (u.nama || u.nama_unit || u.unit || u.kode_unit))
+        );
       } catch (err) {
         console.warn('Masterdata fetch error:', err);
       }
@@ -251,40 +263,199 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
 
   // Format options for SearchableSelect
   const fakultasOptions = useMemo(() => {
-    return fakultasList.map((f, i) => {
-      const name = f.nama || f.nama_fakultas || f.fakultas || f.kode || `Fakultas ${i + 1}`;
-      return { value: name, label: name, subtitle: `Kode: ${f.kode || f.kode_fakultas || f.id || i + 1}` };
+    const list = [...fakultasList];
+    const existingNames = new Set(
+      list.map((f) => String(f.nama || f.nama_fakultas || f.fakultas || f.kode || '').toLowerCase().trim())
+    );
+
+    // Extract fakultas from rawEmployees as fallback/enrichment
+    rawEmployees.forEach((item) => {
+      const p = item.pengguna || {};
+      const fak = p.fakultas;
+      if (fak && fak.trim() && fak.trim() !== '-') {
+        const lower = fak.trim().toLowerCase();
+        if (!existingNames.has(lower)) {
+          existingNames.add(lower);
+          list.push({ nama: fak.trim(), nama_fakultas: fak.trim(), fakultas: fak.trim() });
+        }
+      }
     });
-  }, [fakultasList]);
+
+    return list
+      .filter((f) => f && (f.nama || f.nama_fakultas || f.fakultas || f.kode))
+      .map((f, i) => {
+        const name = f.nama || f.nama_fakultas || f.fakultas || f.kode || `Fakultas ${i + 1}`;
+        const sub = f.kode || f.kode_fakultas || f.id ? `Kode: ${f.kode || f.kode_fakultas || f.id}` : 'Fakultas UNPAK';
+        return { value: name, label: name, subtitle: sub };
+      });
+  }, [fakultasList, rawEmployees]);
 
   const prodiOptions = useMemo(() => {
-    return prodiList
-      .filter((p) => {
-        const name = (p.nama || p.nama_prodi || p.prodi || p.kode || '').toLowerCase();
-        return !name.includes('isi nama ps');
+    // Map of prodi from masterdata for quick lookup of jenjang and nama_fakultas
+    const masterProdiMap = new Map();
+    prodiList.forEach((p) => {
+      const pName = String(p.nama_prodi || p.prodi || p.nama || '').trim().toLowerCase();
+      const pFak = String(p.nama_fakultas || p.fakultas || p.kode_fakultas || '').trim().toLowerCase();
+      if (pName) {
+        masterProdiMap.set(`${pName}:::${pFak}`, p);
+        if (!masterProdiMap.has(pName)) {
+          masterProdiMap.set(pName, p);
+        }
+      }
+    });
+
+    const list = [...prodiList];
+    const existingKeys = new Set(
+      list.map((p) => {
+        const n = String(p.nama_prodi || p.prodi || p.nama || '')
+          .replace(/^(S1|S2|S3|D3|D4|Profesi)\s*[-:]?\s*/i, '')
+          .trim()
+          .toLowerCase();
+        const f = String(p.nama_fakultas || p.fakultas || p.kode_fakultas || '').trim().toLowerCase();
+        return `${n}:::${f}`;
       })
-      .map((p, i) => {
-        const name = p.nama || p.nama_prodi || p.prodi || p.kode || `Prodi ${i + 1}`;
-        return { value: name, label: name, subtitle: `Program Studi UNPAK` };
+    );
+
+    // Also extract prodi from rawEmployees to ensure all prodis present in current data are available
+    rawEmployees.forEach((item) => {
+      const p = item.pengguna || {};
+      const prd = p.prodi;
+      const fak = p.fakultas;
+      if (prd && prd.trim() && prd.trim() !== '-' && !prd.toLowerCase().includes('isi nama ps')) {
+        const cleanPrd = prd.replace(/^(S1|S2|S3|D3|D4|Profesi)\s*[-:]?\s*/i, '').trim();
+        const fakTrim = (fak || '').trim();
+        const key = `${cleanPrd.toLowerCase()}:::${fakTrim.toLowerCase()}`;
+        if (!existingKeys.has(key)) {
+          existingKeys.add(key);
+
+          // Find if master data has jenjang for this prodi
+          const matchedMaster = masterProdiMap.get(key) || masterProdiMap.get(cleanPrd.toLowerCase());
+          const jenjang = matchedMaster?.jenjang || p.jenjang || '';
+          const namaFak = matchedMaster?.nama_fakultas || fakTrim;
+
+          list.push({
+            nama: cleanPrd,
+            nama_prodi: cleanPrd,
+            prodi: cleanPrd,
+            fakultas: namaFak,
+            nama_fakultas: namaFak,
+            jenjang: jenjang,
+            kode_jenjang: matchedMaster?.kode_jenjang,
+          });
+        }
+      }
+    });
+
+    let filtered = list.filter((p) => {
+      const name = String(p.nama_prodi || p.prodi || p.nama || '').toLowerCase().trim();
+      return name && !name.includes('isi nama ps');
+    });
+
+    // If a Fakultas is selected, filter prodi to that Fakultas
+    if (selectedFakultas) {
+      const sf = selectedFakultas.toLowerCase().trim();
+      const matched = filtered.filter((p) => {
+        const fak = String(p.nama_fakultas || p.fakultas || p.kode_fakultas || '').toLowerCase().trim();
+        if (fak && (fak.includes(sf) || sf.includes(fak))) return true;
+        // Check if any employee in this fakultas has this prodi
+        const prdName = String(p.nama_prodi || p.prodi || p.nama || '').toLowerCase().trim();
+        return rawEmployees.some((item) => {
+          const emp = item.pengguna || {};
+          const empFak = String(emp.fakultas || '').toLowerCase();
+          const empPrd = String(emp.prodi || '').toLowerCase();
+          return empFak.includes(sf) && empPrd.includes(prdName);
+        });
       });
-  }, [prodiList]);
+      if (matched.length > 0) {
+        filtered = matched;
+      }
+    }
+
+    const options = [];
+    const seenValues = new Set();
+    const seenLabels = new Set();
+
+    filtered.forEach((p, i) => {
+      const baseName = (p.nama_prodi || p.prodi || p.nama || `Prodi ${i + 1}`).trim();
+      const cleanName = baseName.replace(/^(S1|S2|S3|D3|D4|Profesi)\s*[-:]?\s*/i, '').trim();
+
+      // Resolve jenjang dynamically
+      let jenjang = p.jenjang || '';
+      if (!jenjang) {
+        const m = (p.nama || baseName).match(/^(S1|S2|S3|D3|D4|Profesi)\b/i);
+        if (m) jenjang = m[1].toUpperCase();
+      }
+
+      const fakName = (p.nama_fakultas || p.fakultas || '').trim() || 'Fakultas UNPAK';
+      const displayName = jenjang ? `${jenjang} - ${cleanName}` : cleanName;
+      const optVal = `${cleanName}:::${fakName}`;
+
+      if (seenValues.has(optVal) || seenLabels.has(displayName)) {
+        return;
+      }
+      seenValues.add(optVal);
+      seenLabels.add(displayName);
+
+      options.push({
+        value: optVal,
+        label: displayName,
+        subtitle: fakName,
+        prodi: cleanName,
+        jenjang: jenjang,
+        fakultas: fakName,
+        kode: p.kode_prodi || p.kode,
+      });
+    });
+
+    return options;
+  }, [prodiList, rawEmployees, selectedFakultas]);
 
   const unitOptions = useMemo(() => {
-    if (unitList.length > 0) {
-      return unitList.map((u, i) => {
-        const name = u.nama_unit || u.nama || u.unit || u.kode_unit || `Unit ${i + 1}`;
-        return { value: name, label: name, subtitle: `Kode Unit: ${u.kode_unit || i + 1}` };
-      });
-    }
-    // Fallback extract from employee dataset
-    const set = new Set();
+    const list = [...unitList];
+    const existingNames = new Set(
+      list.map((u) => String(u.nama_unit || u.nama || u.unit || u.kode_unit || '').toLowerCase().trim())
+    );
+
+    // Extract unit from rawEmployees
     rawEmployees.forEach((item) => {
       const p = item.pengguna || {};
       const u = p.unit || p.unit_kerja;
-      if (u && u.trim() && u.trim() !== '-') set.add(u.trim());
+      if (u && u.trim() && u.trim() !== '-') {
+        const lower = u.trim().toLowerCase();
+        if (!existingNames.has(lower)) {
+          existingNames.add(lower);
+          list.push({ nama_unit: u.trim(), nama: u.trim(), unit: u.trim(), fakultas: p.fakultas });
+        }
+      }
     });
-    return Array.from(set).sort().map((u) => ({ value: u, label: u, subtitle: `Unit Kerja` }));
-  }, [unitList, rawEmployees]);
+
+    let filtered = list.filter((u) => u && (u.nama_unit || u.nama || u.unit || u.kode_unit));
+
+    // If a Fakultas is selected, filter units matching that Fakultas
+    if (selectedFakultas) {
+      const sf = selectedFakultas.toLowerCase().trim();
+      const matched = filtered.filter((u) => {
+        const name = String(u.nama_unit || u.nama || u.unit || '').toLowerCase().trim();
+        const fak = String(u.fakultas || '').toLowerCase().trim();
+        if (name.includes(sf) || sf.includes(name) || (fak && (fak.includes(sf) || sf.includes(fak)))) return true;
+        // Check if employees in this unit belong to the selected fakultas
+        return rawEmployees.some((item) => {
+          const emp = item.pengguna || {};
+          const empFak = String(emp.fakultas || '').toLowerCase();
+          const empUnit = String(emp.unit || emp.unit_kerja || '').toLowerCase();
+          return empFak.includes(sf) && empUnit.includes(name);
+        });
+      });
+      if (matched.length > 0) {
+        filtered = matched;
+      }
+    }
+
+    return filtered.map((u, i) => {
+      const name = u.nama_unit || u.nama || u.unit || u.kode_unit || `Unit ${i + 1}`;
+      return { value: name, label: name, subtitle: u.kode_unit ? `Kode Unit: ${u.kode_unit}` : 'Unit Kerja' };
+    });
+  }, [unitList, rawEmployees, selectedFakultas]);
 
   const filteredEmployees = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -302,8 +473,30 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
       if (selectedFakultas && !fakultas.includes(selectedFakultas.toLowerCase())) {
         return false;
       }
-      if (selectedProdi && !prodi.includes(selectedProdi.toLowerCase())) {
-        return false;
+      if (selectedProdi) {
+        if (selectedProdi.includes(':::')) {
+          const [selPrd, selFak] = selectedProdi.split(':::');
+          const lowerPrd = selPrd.toLowerCase().trim();
+          const lowerFak = selFak.toLowerCase().trim();
+          if (!prodi.includes(lowerPrd) && !lowerPrd.includes(prodi)) {
+            return false;
+          }
+          if (lowerFak) {
+            const empFak = fakultas || unit;
+            if (empFak && !lowerFak.includes(empFak) && !empFak.includes(lowerFak)) {
+              const cleanA = lowerFak.replace(/fakultas|sekolah|dan|&/gi, ' ').trim().replace(/\s+/g, ' ');
+              const cleanB = empFak.replace(/fakultas|sekolah|dan|&/gi, ' ').trim().replace(/\s+/g, ' ');
+              if (cleanA && cleanB && !cleanA.includes(cleanB) && !cleanB.includes(cleanA)) {
+                return false;
+              }
+            }
+          }
+        } else {
+          const lower = selectedProdi.toLowerCase().trim();
+          if (!prodi.includes(lower) && !lower.includes(prodi)) {
+            return false;
+          }
+        }
       }
       if (selectedUnit && !unit.includes(selectedUnit.toLowerCase())) {
         return false;

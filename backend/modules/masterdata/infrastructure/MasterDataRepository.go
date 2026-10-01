@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"fmt"
 	"hrportal_backend/modules/masterdata/domain"
 	"strings"
 
@@ -23,73 +24,131 @@ func (r *MasterDataRepository) GetAllFakultas(ctx context.Context) ([]domain.Fak
 	if r == nil {
 		return []domain.Fakultas{}, nil
 	}
-	targetDB := r.dbSimak
-	if targetDB == nil {
-		targetDB = r.db
-	}
-	if targetDB == nil {
-		return []domain.Fakultas{}, nil
-	}
 
 	var list []domain.Fakultas
-	// Try table m_fakultas on SIMAK DB
-	err := targetDB.WithContext(ctx).Table("m_fakultas").Find(&list).Error
-	if err != nil || len(list) == 0 {
-		// Fallback to connect_m_fakultas or default table
-		err = r.db.WithContext(ctx).Table("connect_m_fakultas").Find(&list).Error
+	var err error
+
+	// Target unpak_simak.m_fakultas
+	if r.dbSimak != nil {
+		err = r.dbSimak.WithContext(ctx).Table("m_fakultas").Order("kode_fakultas ASC").Find(&list).Error
 	}
-	if err != nil && len(list) == 0 {
-		err = r.db.WithContext(ctx).Find(&list).Error
+	if (err != nil || len(list) == 0) && r.db != nil {
+		err = r.db.WithContext(ctx).Table("unpak_simak.m_fakultas").Order("kode_fakultas ASC").Find(&list).Error
+	}
+	if err != nil {
+		return []domain.Fakultas{}, err
 	}
 
 	for i := range list {
-		if list[i].KodeFakultas != "" {
-			list[i].ID = list[i].KodeFakultas
-			list[i].Kode = list[i].KodeFakultas
-		}
-		if list[i].NamaFakultas != "" {
-			list[i].Nama = list[i].NamaFakultas
-		}
+		list[i].KodeFakultas = strings.TrimSpace(list[i].KodeFakultas)
+		list[i].NamaFakultas = strings.TrimSpace(list[i].NamaFakultas)
+		list[i].ID = list[i].KodeFakultas
+		list[i].Kode = list[i].KodeFakultas
+		list[i].Nama = list[i].NamaFakultas
 	}
 	return list, nil
+}
+
+func mapJenjang(kodeJenjang, gelarPanjang string) string {
+	switch strings.ToUpper(strings.TrimSpace(kodeJenjang)) {
+	case "A":
+		return "S3"
+	case "B":
+		return "S2"
+	case "C":
+		return "S1"
+	case "D":
+		return "D4"
+	case "E":
+		return "D3"
+	case "F":
+		return "D2"
+	case "G":
+		return "D1"
+	case "J":
+		return "Profesi"
+	default:
+		gp := strings.ToLower(gelarPanjang)
+		if strings.Contains(gp, "doktor") {
+			return "S3"
+		} else if strings.Contains(gp, "magister") {
+			return "S2"
+		} else if strings.Contains(gp, "sarjana") {
+			return "S1"
+		} else if strings.Contains(gp, "ahli madya") {
+			return "D3"
+		}
+		return strings.TrimSpace(kodeJenjang)
+	}
 }
 
 func (r *MasterDataRepository) GetAllProdi(ctx context.Context) ([]domain.Prodi, error) {
 	if r == nil {
 		return []domain.Prodi{}, nil
 	}
-	targetDB := r.dbSimak
-	if targetDB == nil {
-		targetDB = r.db
-	}
-	if targetDB == nil {
-		return []domain.Prodi{}, nil
-	}
 
 	var rawList []domain.Prodi
-	// Try table r_prodi on SIMAK DB
-	err := targetDB.WithContext(ctx).Table("r_prodi").
-		Where("LOWER(nama_prodi) NOT LIKE '%isi nama ps%'").
-		Find(&rawList).Error
+	var err error
 
-	if err != nil || len(rawList) == 0 {
-		// Fallback to connect_r_prodi or default table
-		err = r.db.WithContext(ctx).Table("connect_r_prodi").
-			Where("LOWER(nama_prodi) NOT LIKE '%isi nama ps%'").
+	// Query unpak_simak.m_program_studi joined with unpak_simak.m_fakultas
+	if r.dbSimak != nil {
+		err = r.dbSimak.WithContext(ctx).Table("m_program_studi ps").
+			Select("ps.kode_prodi, ps.kode_fak as kode_fakultas, ps.kode_jenjang, ps.nama_prodi, ps.gelar, ps.gelar_panjang, COALESCE(f.nama_fakultas, '') as nama_fakultas").
+			Joins("LEFT JOIN m_fakultas f ON f.kode_fakultas = ps.kode_fak").
+			Where("LOWER(ps.nama_prodi) NOT LIKE '%isi nama ps%' AND TRIM(ps.nama_prodi) != ''").
+			Order("ps.kode_fak ASC, ps.kode_jenjang ASC, ps.nama_prodi ASC").
 			Find(&rawList).Error
 	}
-	if err != nil && len(rawList) == 0 {
-		err = r.db.WithContext(ctx).
-			Where("LOWER(nama_prodi) NOT LIKE '%isi nama ps%'").
+
+	if (err != nil || len(rawList) == 0) && r.db != nil {
+		err = r.db.WithContext(ctx).Table("unpak_simak.m_program_studi ps").
+			Select("ps.kode_prodi, ps.kode_fak as kode_fakultas, ps.kode_jenjang, ps.nama_prodi, ps.gelar, ps.gelar_panjang, COALESCE(f.nama_fakultas, '') as nama_fakultas").
+			Joins("LEFT JOIN unpak_simak.m_fakultas f ON f.kode_fakultas = ps.kode_fak").
+			Where("LOWER(ps.nama_prodi) NOT LIKE '%isi nama ps%' AND TRIM(ps.nama_prodi) != ''").
+			Order("ps.kode_fak ASC, ps.kode_jenjang ASC, ps.nama_prodi ASC").
 			Find(&rawList).Error
+	}
+
+	if err != nil {
+		return []domain.Prodi{}, err
+	}
+
+	// Lookup full fakultas/unit names from master_units if available
+	unitMap := make(map[string]string)
+	targetUnitDB := r.dbSimpegNew
+	if targetUnitDB == nil {
+		targetUnitDB = r.db
+	}
+	if targetUnitDB != nil {
+		type UnitSimple struct {
+			KodeUnit string `gorm:"column:kode_unit"`
+			NamaUnit string `gorm:"column:nama_unit"`
+		}
+		var uList []UnitSimple
+		_ = targetUnitDB.WithContext(ctx).Table("master_units").Select("kode_unit, nama_unit").Where("kode_unit != ''").Find(&uList).Error
+		for _, u := range uList {
+			if u.KodeUnit != "" && u.NamaUnit != "" {
+				unitMap[strings.TrimSpace(u.KodeUnit)] = strings.TrimSpace(u.NamaUnit)
+			}
+		}
 	}
 
 	var list []domain.Prodi
+	seen := make(map[string]bool)
+
 	for i := range rawList {
-		namaLower := strings.ToLower(rawList[i].NamaProdi)
-		if strings.Contains(namaLower, "isi nama ps") {
+		namaLower := strings.ToLower(strings.TrimSpace(rawList[i].NamaProdi))
+		if strings.Contains(namaLower, "isi nama ps") || namaLower == "" {
 			continue
 		}
+
+		rawList[i].KodeProdi = strings.TrimSpace(rawList[i].KodeProdi)
+		rawList[i].KodeFakultas = strings.TrimSpace(rawList[i].KodeFakultas)
+		rawList[i].KodeJenjang = strings.TrimSpace(rawList[i].KodeJenjang)
+		rawList[i].NamaProdi = strings.TrimSpace(rawList[i].NamaProdi)
+		rawList[i].Gelar = strings.TrimSpace(rawList[i].Gelar)
+		rawList[i].GelarPanjang = strings.TrimSpace(rawList[i].GelarPanjang)
+
 		if rawList[i].KodeProdi != "" {
 			rawList[i].ID = rawList[i].KodeProdi
 			rawList[i].Kode = rawList[i].KodeProdi
@@ -97,9 +156,30 @@ func (r *MasterDataRepository) GetAllProdi(ctx context.Context) ([]domain.Prodi,
 		if rawList[i].KodeFakultas != "" {
 			rawList[i].FakultasID = rawList[i].KodeFakultas
 		}
-		if rawList[i].NamaProdi != "" {
+
+		if unitName, ok := unitMap[rawList[i].KodeFakultas]; ok && unitName != "" {
+			rawList[i].NamaFakultas = unitName
+		} else {
+			rawList[i].NamaFakultas = strings.TrimSpace(rawList[i].NamaFakultas)
+		}
+
+		rawList[i].Jenjang = mapJenjang(rawList[i].KodeJenjang, rawList[i].GelarPanjang)
+		if rawList[i].Jenjang != "" {
+			rawList[i].Nama = fmt.Sprintf("%s - %s", rawList[i].Jenjang, rawList[i].NamaProdi)
+		} else {
 			rawList[i].Nama = rawList[i].NamaProdi
 		}
+
+		// Deduplication check
+		dedupKey := fmt.Sprintf("%s|%s|%s", strings.ToLower(rawList[i].NamaProdi), rawList[i].Jenjang, rawList[i].KodeFakultas)
+		if seen[dedupKey] || (rawList[i].KodeProdi != "" && seen[rawList[i].KodeProdi]) {
+			continue
+		}
+		seen[dedupKey] = true
+		if rawList[i].KodeProdi != "" {
+			seen[rawList[i].KodeProdi] = true
+		}
+
 		list = append(list, rawList[i])
 	}
 	return list, nil

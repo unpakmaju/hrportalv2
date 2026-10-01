@@ -16,15 +16,17 @@ import (
 )
 
 type CheckInCommand struct {
-	Nip         string  `json:"nip"`
-	Nidn        string  `json:"nidn"`
-	NamaPegawai string  `json:"nama_pegawai"`
-	Unit        string  `json:"unit"`
-	Fakultas    string  `json:"fakultas"`
-	Prodi       string  `json:"prodi"`
-	Latitude    float64 `json:"latitude"`
-	Longitude   float64 `json:"longitude"`
-	Note        string  `json:"note"`
+	Nip              string  `json:"nip"`
+	Nidn             string  `json:"nidn"`
+	NamaPegawai      string  `json:"nama_pegawai"`
+	Unit             string  `json:"unit"`
+	Fakultas         string  `json:"fakultas"`
+	Prodi            string  `json:"prodi"`
+	Latitude         float64 `json:"latitude"`
+	Longitude        float64 `json:"longitude"`
+	IpAddress        string  `json:"ip_address"`
+	CatatanLuarUnpak string  `json:"catatan_luar_unpak"`
+	Note             string  `json:"note"`
 }
 
 func (c CheckInCommand) Validate() error {
@@ -91,21 +93,43 @@ func (h *CheckInCommandHandler) Handle(ctx context.Context, cmd *CheckInCommand)
 		}
 	}
 
+	var latPtr, lonPtr *float64
+	if cmd.Latitude != 0 {
+		latPtr = &cmd.Latitude
+	}
+	if cmd.Longitude != 0 {
+		lonPtr = &cmd.Longitude
+	}
+	var ipPtr *string
+	if strings.TrimSpace(cmd.IpAddress) != "" {
+		trimmed := strings.TrimSpace(cmd.IpAddress)
+		ipPtr = &trimmed
+	}
+	var luarPtr *string
+	if strings.TrimSpace(cmd.CatatanLuarUnpak) != "" {
+		trimmed := strings.TrimSpace(cmd.CatatanLuarUnpak)
+		luarPtr = &trimmed
+	}
+
 	if existing == nil {
 		absen := &domain.Absen{
-			Nip:            cmd.Nip,
-			Nidn:           cmd.Nidn,
-			NamaPegawai:    cmd.NamaPegawai,
-			Unit:           cmd.Unit,
-			Fakultas:       cmd.Fakultas,
-			Prodi:          cmd.Prodi,
-			Tanggal:        targetDate,
-			AbsenMasuk:     &now,
-			CatatanTelat:   &cmd.Note,
-			OtomatisKeluar: false,
-			CreatedAt:      &now,
-			UpdatedAt:      &now,
-			IsCreated:      true,
+			Nip:              cmd.Nip,
+			Nidn:             cmd.Nidn,
+			NamaPegawai:      cmd.NamaPegawai,
+			Unit:             cmd.Unit,
+			Fakultas:         cmd.Fakultas,
+			Prodi:            cmd.Prodi,
+			Tanggal:          targetDate,
+			AbsenMasuk:       &now,
+			CatatanTelat:     &cmd.Note,
+			Latitude:         latPtr,
+			Longitude:        lonPtr,
+			IpAddress:        ipPtr,
+			CatatanLuarUnpak: luarPtr,
+			OtomatisKeluar:   false,
+			CreatedAt:        &now,
+			UpdatedAt:        &now,
+			IsCreated:        true,
 		}
 		if err := h.attendanceRepo.CreateAbsen(ctxTx, absen); err != nil {
 			if tx != nil {
@@ -123,6 +147,18 @@ func (h *CheckInCommandHandler) Handle(ctx context.Context, cmd *CheckInCommand)
 
 	existing.AbsenMasuk = &now
 	existing.CatatanTelat = &cmd.Note
+	if latPtr != nil {
+		existing.Latitude = latPtr
+	}
+	if lonPtr != nil {
+		existing.Longitude = lonPtr
+	}
+	if ipPtr != nil {
+		existing.IpAddress = ipPtr
+	}
+	if luarPtr != nil {
+		existing.CatatanLuarUnpak = luarPtr
+	}
 	existing.UpdatedAt = &now
 	existing.IsCreated = false
 	if err := h.attendanceRepo.UpdateAbsen(ctxTx, existing); err != nil {

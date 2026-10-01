@@ -179,27 +179,110 @@ func ModuleAttendance(app *fiber.App) {
 	registerAttendanceRoutes := func(group fiber.Router) {
 
 		group.Post("/check-in", func(c *fiber.Ctx) error {
-			lat, _ := strconv.ParseFloat(c.FormValue("latitude"), 64)
-			lon, _ := strconv.ParseFloat(c.FormValue("longitude"), 64)
+			var body struct {
+				Nip              string  `json:"nip"`
+				Nidn             string  `json:"nidn"`
+				Nama             string  `json:"nama"`
+				NamaPegawai      string  `json:"nama_pegawai"`
+				Unit             string  `json:"unit"`
+				Fakultas         string  `json:"fakultas"`
+				Prodi            string  `json:"prodi"`
+				Latitude         float64 `json:"latitude"`
+				Longitude        float64 `json:"longitude"`
+				IpAddress        string  `json:"ip_address"`
+				Ip               string  `json:"ip"`
+				CatatanTelat     string  `json:"catatan_telat"`
+				CatatanLuarUnpak string  `json:"catatan_luar_unpak"`
+				Note             string  `json:"note"`
+			}
+			_ = c.BodyParser(&body)
 
-			nip := strings.TrimSpace(c.FormValue("nip"))
-			nidn := strings.TrimSpace(c.FormValue("nidn"))
+			nip := strings.TrimSpace(body.Nip)
+			if nip == "" {
+				nip = strings.TrimSpace(c.FormValue("nip"))
+			}
+			nidn := strings.TrimSpace(body.Nidn)
+			if nidn == "" {
+				nidn = strings.TrimSpace(c.FormValue("nidn"))
+			}
 			if nip == "" && nidn != "" {
 				nip = nidn
 			} else if nidn == "" && nip != "" {
 				nidn = nip
 			}
 
+			nama := body.NamaPegawai
+			if nama == "" {
+				nama = body.Nama
+			}
+			if nama == "" {
+				nama = c.FormValue("nama")
+			}
+
+			lat := body.Latitude
+			if lat == 0 {
+				lat, _ = strconv.ParseFloat(c.FormValue("latitude"), 64)
+			}
+			lon := body.Longitude
+			if lon == 0 {
+				lon, _ = strconv.ParseFloat(c.FormValue("longitude"), 64)
+			}
+
+			ip := body.IpAddress
+			if ip == "" {
+				ip = body.Ip
+			}
+			if ip == "" {
+				ip = c.FormValue("ip_address")
+				if ip == "" {
+					ip = c.FormValue("ip")
+				}
+			}
+			if ip == "" {
+				ip = c.IP()
+			}
+
+			catatanLuar := body.CatatanLuarUnpak
+			if catatanLuar == "" {
+				catatanLuar = c.FormValue("catatan_luar_unpak")
+			}
+
+			note := body.Note
+			if note == "" {
+				note = body.CatatanTelat
+			}
+			if note == "" {
+				note = c.FormValue("note")
+			}
+			if note == "" {
+				note = c.FormValue("catatan_telat")
+			}
+
+			unit := body.Unit
+			if unit == "" {
+				unit = c.FormValue("unit")
+			}
+			fakultas := body.Fakultas
+			if fakultas == "" {
+				fakultas = c.FormValue("fakultas")
+			}
+			prodi := body.Prodi
+			if prodi == "" {
+				prodi = c.FormValue("prodi")
+			}
+
 			command := CheckIn.CheckInCommand{
-				Nip:         nip,
-				Nidn:        nidn,
-				NamaPegawai: c.FormValue("nama"),
-				Unit:        c.FormValue("unit"),
-				Fakultas:    c.FormValue("fakultas"),
-				Prodi:       c.FormValue("prodi"),
-				Latitude:    lat,
-				Longitude:   lon,
-				Note:        c.FormValue("note"),
+				Nip:              nip,
+				Nidn:             nidn,
+				NamaPegawai:      nama,
+				Unit:             unit,
+				Fakultas:         fakultas,
+				Prodi:            prodi,
+				Latitude:         lat,
+				Longitude:        lon,
+				IpAddress:        ip,
+				CatatanLuarUnpak: catatanLuar,
+				Note:             note,
 			}
 
 			res, err := mediatr.Send[*CheckIn.CheckInCommand, common.ResultValue[*domain.Absen]](c.UserContext(), &command)
@@ -214,23 +297,6 @@ func ModuleAttendance(app *fiber.App) {
 			// Trigger FCM Notification & WebSocket Broadcast for Check-In Success (Only when CREATED, not updated)
 			if res.Value != nil && res.Value.IsCreated {
 				absenData := res.Value
-				// targetNips := []string{}
-				// if absenData.Nip != "" {
-				// 	targetNips = append(targetNips, absenData.Nip)
-				// }
-				// if absenData.Nidn != "" && absenData.Nidn != absenData.Nip {
-				// 	targetNips = append(targetNips, absenData.Nidn)
-				// }
-				// if len(targetNips) > 0 {
-				// 	helper.GlobalFcmManager.DispatchNotification(
-				// 		targetNips,
-				// 		"Presensi Otomatis Berhasil",
-				// 		"Sistem sudah melakukan absensi otomatis",
-				// 		"attendance",
-				// 		map[string]string{"type": "check-in", "id": strconv.Itoa(int(absenData.ID))},
-				// 	)
-				// }
-
 				masukStr := ""
 				if absenData.AbsenMasuk != nil {
 					masukStr = absenData.AbsenMasuk.Format("2006-01-02 15:04:05")
@@ -248,20 +314,67 @@ func ModuleAttendance(app *fiber.App) {
 		})
 
 		group.Post("/check-out", func(c *fiber.Ctx) error {
-			nip := strings.TrimSpace(c.FormValue("nip"))
-			nidn := strings.TrimSpace(c.FormValue("nidn"))
-			catatan_pulang := c.FormValue("catatan_pulang")
+			var body struct {
+				Nip                   string `json:"nip"`
+				Nidn                  string `json:"nidn"`
+				CatatanPulang         string `json:"catatan_pulang"`
+				Note                  string `json:"note"`
+				IpAddress             string `json:"ip_address"`
+				Ip                    string `json:"ip"`
+				CatatanHasilLuarUnpak string `json:"catatan_hasil_luar_unpak"`
+			}
+			_ = c.BodyParser(&body)
 
+			nip := strings.TrimSpace(body.Nip)
+			if nip == "" {
+				nip = strings.TrimSpace(c.FormValue("nip"))
+			}
+			nidn := strings.TrimSpace(body.Nidn)
+			if nidn == "" {
+				nidn = strings.TrimSpace(c.FormValue("nidn"))
+			}
 			if nip == "" && nidn != "" {
 				nip = nidn
 			} else if nidn == "" && nip != "" {
 				nidn = nip
 			}
 
+			note := body.CatatanPulang
+			if note == "" {
+				note = body.Note
+			}
+			if note == "" {
+				note = c.FormValue("catatan_pulang")
+			}
+			if note == "" {
+				note = c.FormValue("note")
+			}
+
+			ip := body.IpAddress
+			if ip == "" {
+				ip = body.Ip
+			}
+			if ip == "" {
+				ip = c.FormValue("ip_address")
+				if ip == "" {
+					ip = c.FormValue("ip")
+				}
+			}
+			if ip == "" {
+				ip = c.IP()
+			}
+
+			catatanHasil := body.CatatanHasilLuarUnpak
+			if catatanHasil == "" {
+				catatanHasil = c.FormValue("catatan_hasil_luar_unpak")
+			}
+
 			command := CheckOut.CheckOutCommand{
-				Nip:  nip,
-				Nidn: nidn,
-				Note: catatan_pulang,
+				Nip:                   nip,
+				Nidn:                  nidn,
+				Note:                  note,
+				IpAddress:             ip,
+				CatatanHasilLuarUnpak: catatanHasil,
 			}
 
 			res, err := mediatr.Send[*CheckOut.CheckOutCommand, common.ResultValue[*domain.Absen]](c.UserContext(), &command)

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, ChevronDown, Check, X } from 'lucide-react';
 
 export const SearchableSelect = ({
@@ -14,34 +14,94 @@ export const SearchableSelect = ({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef(null);
+  const inputRef = useRef(null);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click and reset search query
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (containerRef.current && !containerRef.current.contains(event.target)) {
         setIsOpen(false);
+        setSearchQuery('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const selectedOption = options.find((opt) => String(opt.value) === String(value));
+  // Autofocus search input when dropdown opens
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        if (inputRef.current) inputRef.current.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
-  const filteredOptions = options.filter((opt) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    const label = (opt.label || opt.name || opt.nama || '').toLowerCase();
-    const val = String(opt.value || '').toLowerCase();
-    const desc = (opt.desc || opt.subtitle || opt.nip || opt.jabatan || '').toLowerCase();
-    return label.includes(q) || val.includes(q) || desc.includes(q);
-  });
+  const selectedOption = useMemo(() => {
+    if (value === null || value === undefined || value === '') return null;
+    return options.find((opt) => {
+      if (typeof opt === 'string' || typeof opt === 'number') {
+        return String(opt) === String(value);
+      }
+      return opt && String(opt.value) === String(value);
+    });
+  }, [options, value]);
+
+  const filteredOptions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return options;
+
+    const queryWords = q.split(/\s+/).filter(Boolean);
+
+    return options.filter((opt) => {
+      if (opt === null || opt === undefined) return false;
+
+      let searchableText = '';
+      if (typeof opt === 'string' || typeof opt === 'number') {
+        searchableText = String(opt);
+      } else {
+        const fields = [
+          opt.label,
+          opt.name,
+          opt.nama,
+          opt.nama_prodi,
+          opt.nama_unit,
+          opt.nama_fakultas,
+          opt.value,
+          opt.desc,
+          opt.subtitle,
+          opt.nip,
+          opt.kode,
+          opt.kode_unit,
+          opt.kode_fakultas,
+          opt.kode_prodi,
+          opt.jabatan,
+        ];
+        searchableText = fields.filter(Boolean).map(String).join(' ');
+      }
+
+      const lowerText = searchableText.toLowerCase();
+      return queryWords.every((word) => lowerText.includes(word));
+    });
+  }, [options, searchQuery]);
+
+  const handleToggle = () => {
+    if (disabled) return;
+    if (isOpen) {
+      setIsOpen(false);
+      setSearchQuery('');
+    } else {
+      setIsOpen(true);
+      setSearchQuery('');
+    }
+  };
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
       {/* Trigger Field */}
       <div
-        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onClick={handleToggle}
         className="bm-input"
         style={{
           display: 'flex',
@@ -61,7 +121,11 @@ export const SearchableSelect = ({
             renderSelected ? (
               renderSelected(selectedOption)
             ) : (
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>{selectedOption.label || selectedOption.name}</span>
+              <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                {typeof selectedOption === 'object'
+                  ? selectedOption.label || selectedOption.name || selectedOption.nama || selectedOption.value
+                  : String(selectedOption)}
+              </span>
             )
           ) : (
             <span style={{ color: '#94a3b8' }}>{placeholder}</span>
@@ -75,8 +139,10 @@ export const SearchableSelect = ({
               onClick={(e) => {
                 e.stopPropagation();
                 onChange(null);
+                setSearchQuery('');
               }}
               style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px' }}
+              title="Hapus pilihan"
             >
               <X size={14} />
             </button>
@@ -88,6 +154,7 @@ export const SearchableSelect = ({
       {/* Searchable Dropdown Popup */}
       {isOpen && (
         <div
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
@@ -106,8 +173,8 @@ export const SearchableSelect = ({
           <div style={{ padding: '10px 12px', borderBottom: '1px solid #f1f5f9', position: 'relative' }}>
             <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
+              ref={inputRef}
               type="text"
-              autoFocus
               className="bm-input"
               placeholder={searchPlaceholder}
               value={searchQuery}
@@ -124,18 +191,58 @@ export const SearchableSelect = ({
 
           {/* Options List */}
           <div style={{ maxHeight: '220px', overflowY: 'auto', padding: '4px' }}>
+            {/* Opsi Reset / Semua */}
+            {(!searchQuery.trim() || 'semua'.includes(searchQuery.trim().toLowerCase())) && (
+              <div
+                onClick={() => {
+                  onChange(null);
+                  setIsOpen(false);
+                  setSearchQuery('');
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: !value ? '#f0fdf4' : 'transparent',
+                  color: !value ? '#15803d' : '#475569',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  transition: 'background 0.15s ease',
+                  marginBottom: '2px',
+                  borderBottom: '1px dashed #e2e8f0',
+                }}
+                onMouseEnter={(e) => {
+                  if (value) e.currentTarget.style.background = '#f8fafc';
+                }}
+                onMouseLeave={(e) => {
+                  if (value) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{placeholder}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Tampilkan semua pilihan</div>
+                </div>
+                {!value && <Check size={16} color="#10b981" />}
+              </div>
+            )}
+
             {filteredOptions.length === 0 ? (
               <div style={{ padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: '0.825rem' }}>
                 Tidak ada opsi ditemukan.
               </div>
             ) : (
-              filteredOptions.map((opt) => {
-                const isSelected = String(opt.value) === String(value);
+              filteredOptions.map((opt, idx) => {
+                const optValue = typeof opt === 'object' && opt !== null ? opt.value : opt;
+                const optLabel = typeof opt === 'object' && opt !== null ? (opt.label || opt.name || opt.nama || opt.value) : String(opt);
+                const optSubtitle = typeof opt === 'object' && opt !== null ? opt.subtitle : null;
+                const isSelected = String(optValue) === String(value);
+
                 return (
                   <div
-                    key={opt.value}
+                    key={`${optValue ?? optLabel ?? idx}-${idx}`}
                     onClick={() => {
-                      onChange(opt.value, opt);
+                      onChange(optValue, opt);
                       setIsOpen(false);
                       setSearchQuery('');
                     }}
@@ -163,8 +270,8 @@ export const SearchableSelect = ({
                         renderOption(opt)
                       ) : (
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{opt.label || opt.name}</div>
-                          {opt.subtitle && <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{opt.subtitle}</div>}
+                          <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{optLabel}</div>
+                          {optSubtitle && <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{optSubtitle}</div>}
                         </div>
                       )}
                     </div>

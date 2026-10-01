@@ -5,13 +5,14 @@ import { Navbar } from './components/Navbar';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MasterLiburPage } from './pages/MasterLiburPage';
+import { MasterUpacaraPage } from './pages/MasterUpacaraPage';
 import { IzinPage } from './pages/IzinPage';
 import { CutiPage } from './pages/CutiPage';
 import { SppdPage } from './pages/SppdPage';
 import { SlipGajiPage } from './pages/SlipGajiPage';
 import { ReportPage } from './pages/ReportPage';
 
-const VALID_TABS = ['dashboard', 'cuti', 'izin', 'sppd', 'slip-gaji', 'libur', 'laporan'];
+const VALID_TABS = ['dashboard', 'cuti', 'izin', 'sppd', 'slip-gaji', 'libur', 'upacara', 'laporan'];
 
 const getInitialTab = () => {
   const path = window.location.pathname.replace(/^\//, '').toLowerCase();
@@ -112,6 +113,8 @@ export const App = () => {
         return <SlipGajiPage />;
       case 'libur':
         return <MasterLiburPage />;
+      case 'upacara':
+        return <MasterUpacaraPage />;
       case 'laporan':
         return <ReportPage globalPeriodType={periodType} onPeriodTypeChange={setPeriodType} />;
       default:
