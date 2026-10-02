@@ -29,7 +29,7 @@ func (r *PayrollRepository) GetSlipGaji(ctx context.Context, tahunStr string, bu
 	}
 
 	var slipGaji domain.SlipGaji
-	err := targetDB.WithContext(ctx).Table("payroll_publishb").
+	err := targetDB.WithContext(ctx).Table("payroll_publishb").Debug().
 		Where("tahun = ?", tahunStr).
 		Where("(bulan = ? OR bulan = ? OR bulan = ?)", bulanNum, bulanStr, namaBulanStr).
 		Where("(TRIM(nip) = ? OR nip = ?)", nip, nip).
@@ -40,14 +40,14 @@ func (r *PayrollRepository) GetSlipGaji(ctx context.Context, tahunStr string, bu
 		var resolvedNip string
 
 		// Kueri e_pribadi berdasarkan nidn atau nip
-		errEP := targetDB.WithContext(ctx).Table("e_pribadi").
+		errEP := targetDB.WithContext(ctx).Table("e_pribadi").Debug().
 			Select("nip").
 			Where("nidn = ? OR nip = ?", nip, nip).
 			Scan(&resolvedNip).Error
 
 		if errEP != nil || strings.TrimSpace(resolvedNip) == "" {
 			// Fallback ke pegawais jika tabel e_pribadi berbeda
-			_ = targetDB.WithContext(ctx).Table("pegawais").
+			_ = targetDB.WithContext(ctx).Table("pegawais").Debug().
 				Select("nip").
 				Where("nidn = ? OR nip = ?", nip, nip).
 				Scan(&resolvedNip).Error
@@ -56,7 +56,7 @@ func (r *PayrollRepository) GetSlipGaji(ctx context.Context, tahunStr string, bu
 		resolvedNip = strings.TrimSpace(resolvedNip)
 		if resolvedNip != "" && resolvedNip != nip {
 			// Kueri ulang ke payroll_publishb menggunakan NIP hasil pencarian dari e_pribadi
-			err = targetDB.WithContext(ctx).Table("payroll_publishb").
+			err = targetDB.WithContext(ctx).Table("payroll_publishb").Debug().
 				Where("tahun = ?", tahunStr).
 				Where("(bulan = ? OR bulan = ? OR bulan = ?)", bulanNum, bulanStr, namaBulanStr).
 				Where("(TRIM(nip) = ? OR nip = ?)", resolvedNip, resolvedNip).
