@@ -25,6 +25,11 @@ func (h *GetAllAbsenUpacarasQueryHandler) Handle(ctx context.Context, query *Get
 	if err != nil {
 		return common.FailureValue[[]domain.AbsenUpacara](common.FailureError("CeremonyAttendance.GetAllFailed", err.Error())), nil
 	}
+	for i := range list {
+		if len(list[i].Tanggal) > 10 {
+			list[i].Tanggal = list[i].Tanggal[:10]
+		}
+	}
 
 	return common.SuccessValue(list), nil
 }

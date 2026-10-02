@@ -184,12 +184,12 @@ export const PresensiPage = () => {
     const requiredHours = isFriday ? 6 : 7;
     const early = diffMinutes < (requiredHours * 60);
 
+    // Check if worked outside UNPAK (determined by check-in status, NOT check-out location)
     const wasOutside = Boolean(
-      todayRecord?.catatan_luar_unpak || 
-      (todayRecord?.latitude && !isWithinCampus(todayRecord.latitude, todayRecord.longitude))
+      (todayRecord?.catatan_luar_unpak && todayRecord.catatan_luar_unpak.trim() !== '') || 
+      (todayRecord?.latitude && todayRecord?.longitude && !isWithinCampus(todayRecord.latitude, todayRecord.longitude) && !todayRecord?.ip_address?.includes('103.169'))
     );
-    const isCurrentlyOutside = !locCheck.inRange;
-    const isOutsideWork = wasOutside || isCurrentlyOutside;
+    const isOutsideWork = wasOutside;
 
     if (early) {
       setCheckOutConditions({ isEarly: early, isOutside: isOutsideWork });
@@ -252,11 +252,12 @@ export const PresensiPage = () => {
     const requiredHours = isFriday ? 6 : 7;
     const early = diffMinutes < (requiredHours * 60);
 
+    // Check if worked outside UNPAK (determined by check-in status, NOT check-out location)
     const wasOutside = Boolean(
-      todayRecord?.catatan_luar_unpak || 
-      (todayRecord?.latitude && !isWithinCampus(todayRecord.latitude, todayRecord.longitude))
+      (todayRecord?.catatan_luar_unpak && todayRecord.catatan_luar_unpak.trim() !== '') || 
+      (todayRecord?.latitude && todayRecord?.longitude && !isWithinCampus(todayRecord.latitude, todayRecord.longitude) && !todayRecord?.ip_address?.includes('103.169'))
     );
-    const isOutsideWork = wasOutside || !locCheck.inRange;
+    const isOutsideWork = wasOutside;
 
     const notePulang = notes.earlyExitReason || (early ? earlyExitReason : '');
     const noteHasil = notes.outsideResult || ((early && isOutsideWork) ? outsideResult : '');

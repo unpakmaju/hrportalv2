@@ -145,8 +145,8 @@ func (r *SimakRepository) GetInfo(ctx context.Context, sid string) (*domain.User
 			Table("pegawais p").
 			Select("p.nip, u.nama_unit").
 			Joins("LEFT JOIN pegawai_pekerjaans pp ON pp.pegawai_id = p.id").
-			Joins("LEFT JOIN master_units u ON (u.id = pp.master_unit_id OR u.id = pp.unit_id)").
-			Where("p.nidn = ? OR p.nip = ?", sid, sid).
+			Joins("LEFT JOIN master_units u ON u.kode_unit = pp.kode_unit").
+			Where("p.nidn_nitk = ?", sid).
 			First(&ns)
 
 		if ns.Nip != nil && *ns.Nip != "" {

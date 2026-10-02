@@ -42,7 +42,7 @@ export const MasterUpacaraPage = () => {
   const [tanggal, setTanggal] = useState('');
   const [jamMulai, setJamMulai] = useState('08:00');
   const [jamSelesai, setJamSelesai] = useState('09:00');
-  const [lokasi, setLokasi] = useState('Teknik / Lapangan');
+  const [lokasi, setLokasi] = useState('Lapangan Utama UNPAK');
   const [deskripsi, setDeskripsi] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -79,7 +79,7 @@ export const MasterUpacaraPage = () => {
     setTanggal(getLocalDateStr());
     setJamMulai('08:00');
     setJamSelesai('09:00');
-    setLokasi('Teknik / Lapangan');
+    setLokasi('Lapangan Utama UNPAK');
     setDeskripsi('');
     setIsModalOpen(true);
   };
@@ -101,7 +101,7 @@ export const MasterUpacaraPage = () => {
     setTanggal(formattedDate);
     setJamMulai(item.jam_mulai || '08:00');
     setJamSelesai(item.jam_selesai || '09:00');
-    setLokasi(item.lokasi || 'Teknik / Lapangan');
+    setLokasi(item.lokasi || 'Lapangan Utama UNPAK');
     setDeskripsi(item.deskripsi || '');
     setIsModalOpen(true);
   };
@@ -119,20 +119,19 @@ export const MasterUpacaraPage = () => {
 
     setSubmitting(true);
     try {
-      const payload = {
-        nama: nama.trim(),
-        tanggal: cleanDate,
-        jam_mulai: jamMulai || '08:00',
-        jam_selesai: jamSelesai || '09:00',
-        lokasi: lokasi.trim() || 'Teknik / Lapangan',
-        deskripsi: deskripsi.trim(),
-      };
+      const formData = new FormData();
+      formData.append('event', nama.trim()); //[pr] ini bukan dari nama
+      formData.append('tanggal', cleanDate);
+      formData.append('jam_mulai', jamMulai || '08:00');
+      formData.append('jam_selesai', jamSelesai || '09:00');
+      formData.append('lokasi', lokasi.trim() || 'Lapangan Utama UNPAK');
+      formData.append('deskripsi', deskripsi.trim());
 
       if (editingItem) {
-        await apiClient.put(`/api/v2/master-upacara/${editingItem.id}`, payload);
+        await apiClient.putForm(`/api/v2/master-upacara/${editingItem.id}`, formData);
         showToast('Berhasil mengupdate jadwal master upacara', 'success');
       } else {
-        await apiClient.post('/api/v2/master-upacara', payload);
+        await apiClient.postForm('/api/v2/master-upacara', formData);
         showToast('Berhasil menambahkan jadwal master upacara baru', 'success');
       }
       setIsModalOpen(false);
@@ -265,7 +264,7 @@ export const MasterUpacaraPage = () => {
               Jika tanggal 17 bertepatan hari libur/Minggu atau terdapat upacara peringatan khusus (Hari Pahlawan, Dies Natalis, dll.), gunakan menu ini untuk <strong>koreksi atau penjadwalan tanggal upacara tambahan</strong>.
             </li>
             <li>
-              Tombol <strong>Absen Upacara</strong> di dashboard hanya aktif pada <strong>pukul 08:00 s.d. 09:00 WIB</strong> dan pegawai wajib berada di <strong>Area Fakultas Teknik atau Lapangan Utama UNPAK</strong> (sesuai verifikasi GPS Polygon).
+              Tombol <strong>Absen Upacara</strong> di dashboard aktif sesuai dengan <strong>Jam Mulai s.d. Jam Selesai</strong> yang ditentukan pada jadwal (default rutin: pukul 08:00 s.d. 09:00 WIB) dan pegawai wajib berada di <strong>Area Lapangan Utama UNPAK</strong> (sesuai verifikasi GPS Polygon).
             </li>
           </ul>
         </div>
@@ -385,7 +384,7 @@ export const MasterUpacaraPage = () => {
                     <td style={{ padding: '14px 16px', color: '#374151' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <MapPin size={14} color="#10b981" />
-                        <span>{item.lokasi || 'Teknik / Lapangan'}</span>
+                        <span>{item.lokasi || 'Lapangan Utama UNPAK'}</span>
                       </div>
                     </td>
                     <td style={{ padding: '14px 16px' }}>
@@ -535,13 +534,13 @@ export const MasterUpacaraPage = () => {
             <input
               type="text"
               className="bm-input"
-              placeholder="Contoh: Teknik / Lapangan"
+              placeholder="Contoh: Lapangan Utama UNPAK"
               value={lokasi}
               onChange={(e) => setLokasi(e.target.value)}
               style={{ width: '100%', height: '40px' }}
             />
             <span style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px', display: 'block' }}>
-              Lokasi verifikasi GPS: Lapangan Utama UNPAK atau Fakultas Teknik UNPAK.
+              Lokasi verifikasi GPS: Lapangan Utama UNPAK.
             </span>
           </div>
 

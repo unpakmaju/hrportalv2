@@ -48,6 +48,7 @@ func (h *UpdateAbsenUpacaraCommandHandler) Handle(ctx context.Context, cmd *Upda
 	}
 
 	now := time.Now()
+	upacara.Nama = cmd.Nama
 	upacara.Nip = cmd.Nip
 	upacara.Nidn = cmd.Nidn
 	upacara.Tanggal = cmd.Tanggal

@@ -189,7 +189,7 @@ func registerReportRoutes(group fiber.Router) {
 		}
 
 		c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filepath.Base(job.FilePath)))
-		c.Set("Content-Type", "text/csv; charset=utf-8")
+		c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 		return c.SendFile(job.FilePath)
 	})
 }

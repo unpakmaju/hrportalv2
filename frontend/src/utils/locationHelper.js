@@ -254,7 +254,7 @@ export function getCurrentCoordinates() {
 }
 
 /**
- * Check if the given coordinates are within the ceremony polygons (Teknik or Lapangan)
+ * Check if the given coordinates are within the ceremony polygon (Lapangan Utama UNPAK)
  * Incorporates an adaptive buffer tolerance (default 40m, up to 50m depending on GPS accuracy)
  * @param {number} lat 
  * @param {number} lon 
@@ -266,23 +266,19 @@ export function isWithinCeremonyLocation(lat, lon, accuracy = 0) {
   if (isNaN(lat) || isNaN(lon) || (lat === 0 && lon === 0)) return false;
 
   // 1. Direct point-in-polygon
-  if (
-    isPointInPolygon(lat, lon, POLYGON_TEKNIK) ||
-    isPointInPolygon(lat, lon, POLYGON_LAPANGAN)
-  ) {
+  if (isPointInPolygon(lat, lon, POLYGON_LAPANGAN)) {
     return true;
   }
 
   // 2. Tolerance buffer (Industry standard for mobile/browser GPS accuracy)
   const bufferMeters = Math.max(40, Math.min(accuracy || 0, 50));
-  const distTeknik = getDistanceToPolygon(lat, lon, POLYGON_TEKNIK);
   const distLapangan = getDistanceToPolygon(lat, lon, POLYGON_LAPANGAN);
 
-  return distTeknik <= bufferMeters || distLapangan <= bufferMeters;
+  return distLapangan <= bufferMeters;
 }
 
 /**
- * Checks ceremony location details
+ * Checks ceremony location details (Lapangan Utama UNPAK)
  * @param {number} lat 
  * @param {number} lon 
  * @param {number} [accuracy=0]
@@ -297,21 +293,14 @@ export function checkCeremonyLocation(lat, lon, accuracy = 0) {
   if (isPointInPolygon(lat, lon, POLYGON_LAPANGAN)) {
     return { inRange: true, locationName: 'Lapangan Utama UNPAK' };
   }
-  if (isPointInPolygon(lat, lon, POLYGON_TEKNIK)) {
-    return { inRange: true, locationName: 'Fakultas Teknik UNPAK' };
-  }
 
   // Check tolerance buffer
   const bufferMeters = Math.max(40, Math.min(accuracy || 0, 50));
   const distLapangan = getDistanceToPolygon(lat, lon, POLYGON_LAPANGAN);
-  const distTeknik = getDistanceToPolygon(lat, lon, POLYGON_TEKNIK);
 
   if (distLapangan <= bufferMeters) {
     return { inRange: true, locationName: 'Lapangan Utama UNPAK' };
   }
-  if (distTeknik <= bufferMeters) {
-    return { inRange: true, locationName: 'Fakultas Teknik UNPAK' };
-  }
 
-  return { inRange: false, locationName: 'Di Luar Area Upacara (Teknik / Lapangan)' };
+  return { inRange: false, locationName: 'Di Luar Area Upacara (Lapangan Utama UNPAK)' };
 }

@@ -154,19 +154,6 @@ export default function AttendanceMap({
           })
           .addTo(polyGroup);
 
-        // Draw Fakultas Teknik Polygon (Ceremony Area 2)
-        L.polygon(teknikLatLngs, {
-          color: '#e11d48',
-          weight: 2.5,
-          fillColor: '#e11d48',
-          fillOpacity: 0.25,
-        })
-          .bindTooltip('<strong>Area Upacara: Fakultas Teknik UNPAK</strong>', {
-            sticky: true,
-            className: 'map-tooltip',
-          })
-          .addTo(polyGroup);
-
         mapInstanceRef.current = map;
         setMapReady(true);
 
@@ -174,9 +161,9 @@ export default function AttendanceMap({
           setFollowUser(false);
         });
 
-        // Initial Bounds fit to ceremony polygons
-        const allCeremonyBounds = L.latLngBounds([...teknikLatLngs, ...lapanganLatLngs]);
-        map.fitBounds(allCeremonyBounds, { padding: [30, 30] });
+        // Initial Bounds fit to ceremony polygon (Lapangan Utama)
+        const allCeremonyBounds = L.latLngBounds(lapanganLatLngs);
+        map.fitBounds(allCeremonyBounds, { padding: [35, 35] });
 
         // Trigger resize calculation
         setTimeout(() => {
@@ -374,14 +361,9 @@ export default function AttendanceMap({
               fontWeight: 700,
             }}
           >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#be123c' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#e11d48' }}></span>
-              Fak. Teknik
-            </span>
-            <span style={{ color: '#cbd5e1' }}>•</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#0369a1' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#0369a1' }}>
               <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7' }}></span>
-              Lapangan UNPAK
+              Zona Upacara: Lapangan UNPAK
             </span>
           </div>
 

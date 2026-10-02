@@ -508,6 +508,9 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
   const [hasCheckedInCeremony, setHasCheckedInCeremony] = useState(false);
   const [todayCeremonyRecord, setTodayCeremonyRecord] = useState(null);
   const [submittingCeremony, setSubmittingCeremony] = useState(false);
+  const [ceremonyHistoryList, setCeremonyHistoryList] = useState([]);
+  const [masterCeremoniesList, setMasterCeremoniesList] = useState([]);
+  const [ceremonySearchQuery, setCeremonySearchQuery] = useState('');
 
   const isTanggal17 = currentTime.getDate() === 17;
   const hasCeremonyToday = isTanggal17 || Boolean(todayCeremonyData?.has_ceremony);
@@ -522,7 +525,7 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
         tanggal: getLocalDateStr(),
         jam_mulai: '08:00',
         jam_selesai: '09:00',
-        lokasi: 'Lapangan Utama UNPAK / Fakultas Teknik',
+        lokasi: 'Lapangan Utama UNPAK',
         deskripsi: 'Upacara bendera bulanan civitas akademika Universitas Pakuan.',
       };
     }
@@ -531,20 +534,38 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
       tanggal: getLocalDateStr(),
       jam_mulai: '08:00',
       jam_selesai: '09:00',
-      lokasi: 'Lapangan Utama UNPAK / Fakultas Teknik',
+      lokasi: 'Lapangan Utama UNPAK',
       deskripsi: 'Upacara bendera rutin setiap tanggal 17 atau jadwal resmi Master Upacara.',
     };
   }, [todayCeremonyData, isTanggal17]);
 
   const ceremonyTimeStatus = useMemo(() => {
-    const hours = currentTime.getHours();
-    const minutes = currentTime.getMinutes();
-    // Rule: hanya aktif pada jam 08:00 hingga 09:00 WIB
-    const isCeremonyTime = hours === 8 || (hours === 9 && minutes === 0);
-    const isBefore = hours < 8;
-    const isAfter = hours > 9 || (hours === 9 && minutes > 0);
-    return { isCeremonyTime, isBefore, isAfter };
-  }, [currentTime]);
+    const rawStart = (activeCeremonyInfo?.jam_mulai || '08:00').trim() || '08:00';
+    const rawEnd = (activeCeremonyInfo?.jam_selesai || '09:00').trim() || '09:00';
+
+    const [startH, startM] = rawStart.split(':').map((v) => parseInt(v, 10) || 0);
+    const [endH, endM] = rawEnd.split(':').map((v) => parseInt(v, 10) || 0);
+
+    const startTimeStr = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
+    const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+    const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+
+    // Rule: aktif dari jam_mulai hingga jam_selesai
+    const isCeremonyTime = nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+    const isBefore = nowMinutes < startMinutes;
+    const isAfter = nowMinutes > endMinutes;
+
+    return {
+      isCeremonyTime,
+      isBefore,
+      isAfter,
+      startTimeStr,
+      endTimeStr,
+    };
+  }, [currentTime, activeCeremonyInfo]);
 
   const ceremonyLocationStatus = useMemo(() => {
     const lat = currentCoords?.latitude || 0;
@@ -716,15 +737,22 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
         );
       }
 
-      // Check Master Upacara & Today Ceremony Attendance
+      // Check Master Upacara & Ceremony Attendance History
       try {
-        const [upacaraTodayRes, ceremonyAttRes] = await Promise.allSettled([
+        const [upacaraTodayRes, ceremonyAttRes, allMasterUpacaraRes] = await Promise.allSettled([
           apiClient.get('/api/v2/master-upacara/today'),
           apiClient.get('/api/v2/ceremony-attendance'),
+          apiClient.get('/api/v2/master-upacara'),
         ]);
 
         if (upacaraTodayRes.status === 'fulfilled' && upacaraTodayRes.value) {
           setTodayCeremonyData(upacaraTodayRes.value);
+        }
+
+        if (allMasterUpacaraRes.status === 'fulfilled' && allMasterUpacaraRes.value) {
+          const mVal = allMasterUpacaraRes.value;
+          const mList = Array.isArray(mVal) ? mVal : (mVal?.data || []);
+          setMasterCeremoniesList(mList);
         }
 
         if (ceremonyAttRes.status === 'fulfilled' && ceremonyAttRes.value) {
@@ -734,11 +762,36 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
           else if (val?.data && Array.isArray(val.data)) cList = val.data;
 
           const todayStr = getLocalDateStr();
-          const userNip = String(user?.nip || user?.username || '').trim();
-          const found = cList.find((item) => {
-            const itemDate = item.tanggal || (item.created_at ? getLocalDateStr(item.created_at) : '');
-            const itemNip = String(item.nip || item.nidn || '').trim();
-            return itemDate === todayStr && (itemNip === userNip || !userNip);
+          const userNip = String(user?.nip || '').trim().toLowerCase();
+          const userNidn = String(user?.nidn || '').trim().toLowerCase();
+          const userUsername = String(user?.username || '').trim().toLowerCase();
+          const userName = String(user?.name || user?.nama || '').trim().toLowerCase();
+
+          const userRecords = cList.filter((item) => {
+            const itemNip = String(item.nip || '').trim().toLowerCase();
+            const itemNidn = String(item.nidn || '').trim().toLowerCase();
+            const itemName = String(item.nama || '').trim().toLowerCase();
+
+            // Match by NIP / NIDN / Username across both fields
+            if (userNip && (itemNip === userNip || itemNidn === userNip)) return true;
+            if (userNidn && (itemNip === userNidn || itemNidn === userNidn)) return true;
+            if (userUsername && (itemNip === userUsername || itemNidn === userUsername)) return true;
+
+            // Fallback match by Name if both NIP and NIDN were missing in record
+            if (!itemNip && !itemNidn && userName && itemName && userName === itemName) return true;
+
+            // If user has no identifiers, include
+            if (!userNip && !userNidn && !userUsername) return true;
+
+            return false;
+          });
+
+          setCeremonyHistoryList(userRecords);
+
+          const found = userRecords.find((item) => {
+            const cleanTanggal = String(item.tanggal || '').trim().slice(0, 10);
+            const cleanCreatedAt = item.created_at ? getLocalDateStr(item.created_at) : '';
+            return cleanTanggal === todayStr || cleanCreatedAt === todayStr;
           });
           setTodayCeremonyRecord(found || null);
           setHasCheckedInCeremony(Boolean(found));
@@ -1023,7 +1076,7 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
     };
     window.addEventListener('role-changed', handleRoleChanged);
     return () => window.removeEventListener('role-changed', handleRoleChanged);
-  }, [userRole]);
+  }, [userRole, user?.nip, user?.nidn, user?.username]);
 
   // --- Helper Date Range Filter ---
   const getPeriodDates = useCallback(() => {
@@ -1510,13 +1563,12 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
     const requiredHours = isFriday ? 6 : 7;
     const isEarly = diffMinutes < (requiredHours * 60);
 
-    // Check if worked outside UNPAK (either checked in outside or currently outside)
+    // Check if worked outside UNPAK (determined by check-in status, NOT check-out location)
     const wasOutside = Boolean(
-      todayAbsen?.catatan_luar_unpak || 
-      (todayAbsen?.latitude && !isWithinCampus(todayAbsen.latitude, todayAbsen.longitude))
+      (todayAbsen?.catatan_luar_unpak && todayAbsen.catatan_luar_unpak.trim() !== '') || 
+      (todayAbsen?.latitude && todayAbsen?.longitude && !isWithinCampus(todayAbsen.latitude, todayAbsen.longitude) && !todayAbsen?.ip_address?.includes('103.169'))
     );
-    const isCurrentlyOutside = !locCheck.inRange;
-    const isOutsideWork = wasOutside || isCurrentlyOutside;
+    const isOutsideWork = wasOutside;
 
     // Rule 3, 3.a, 4: early check out (< 15:00) requires modal
     if (customNote === null) {
@@ -1566,8 +1618,8 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
     if (!ceremonyTimeStatus.isCeremonyTime) {
       showToast(
         ceremonyTimeStatus.isBefore
-          ? 'Absen Upacara belum dibuka. Presensi dibuka pukul 08:00 - 09:00 WIB.'
-          : 'Waktu pelaksanaan Absen Upacara telah berakhir (08:00 - 09:00 WIB).',
+          ? `Absen Upacara belum dibuka. Presensi dibuka pukul ${ceremonyTimeStatus.startTimeStr} - ${ceremonyTimeStatus.endTimeStr} WIB.`
+          : `Waktu pelaksanaan Absen Upacara telah berakhir (${ceremonyTimeStatus.startTimeStr} - ${ceremonyTimeStatus.endTimeStr} WIB).`,
         'warning'
       );
       return;
@@ -1590,7 +1642,7 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
 
     if (!inRange) {
       showToast(
-        'Gagal Presensi Upacara: Anda wajib berada di Area Fakultas Teknik atau Lapangan Utama UNPAK.',
+        'Gagal Presensi Upacara: Anda wajib berada di Area Lapangan Utama UNPAK.',
         'error'
       );
       return;
@@ -1613,6 +1665,13 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
       setHasCheckedInCeremony(true);
       fetchDashboardData();
     } catch (err) {
+      const errMsg = String(err?.message || '').toLowerCase();
+      if (errMsg.includes('sudah absen upacara') || errMsg.includes('already') || errMsg.includes('tercatat')) {
+        showToast('Presensi Upacara Anda telah tercatat untuk hari ini.', 'info');
+        setHasCheckedInCeremony(true);
+        fetchDashboardData();
+        return;
+      }
       showToast(err.message || 'Gagal melakukan absen upacara', 'error');
     } finally {
       setSubmittingCeremony(false);
@@ -1647,6 +1706,25 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
       return matchNote || matchDate || matchStatus;
     });
   }, [fullHistoryList, searchQuery]);
+
+  // Filtered Ceremony Attendance History
+  const filteredCeremonyHistory = useMemo(() => {
+    return ceremonyHistoryList
+      .filter((item) => {
+        if (!ceremonySearchQuery.trim()) return true;
+        const q = ceremonySearchQuery.toLowerCase();
+        const rawDate = String(item.tanggal || (item.created_at ? getLocalDateStr(item.created_at) : '')).slice(0, 10);
+        const matchDate = rawDate.includes(q) || formatIndonesianDate(rawDate).toLowerCase().includes(q);
+        const matchName = (item.nama || '').toLowerCase().includes(q);
+        const matchUnit = (item.unit || item.fakultas || item.prodi || '').toLowerCase().includes(q);
+        return matchDate || matchName || matchUnit;
+      })
+      .sort((a, b) => {
+        const dateA = String(a.tanggal || (a.created_at ? getLocalDateStr(a.created_at) : '')).slice(0, 10);
+        const dateB = String(b.tanggal || (b.created_at ? getLocalDateStr(b.created_at) : '')).slice(0, 10);
+        return dateB.localeCompare(dateA);
+      });
+  }, [ceremonyHistoryList, ceremonySearchQuery]);
 
   const renderStatusBadge = (item) => {
     const checkIn = item.absen_masuk || item.check_in;
@@ -2161,109 +2239,15 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
               >
                 {hasCeremonyToday ? (
                   <>
-                    Waktu: <strong>08:00 - 09:00 WIB</strong> • Lokasi: <strong>{activeCeremonyInfo?.lokasi || 'Fakultas Teknik / Lapangan Utama'}</strong>
+                    Waktu: <strong>{ceremonyTimeStatus.startTimeStr} - {ceremonyTimeStatus.endTimeStr} WIB</strong> • Lokasi: <strong>{activeCeremonyInfo?.lokasi || 'Lapangan Utama UNPAK'}</strong>
                   </>
                 ) : (
                   <>
-                    Jadwal Rutin: <strong>Setiap Tanggal 17 (08:00 - 09:00 WIB)</strong> • Lokasi: <strong>{activeCeremonyInfo?.lokasi || 'Fakultas Teknik / Lapangan Utama UNPAK'}</strong>
+                    Jadwal Rutin: <strong>Setiap Tanggal 17 ({ceremonyTimeStatus.startTimeStr} - {ceremonyTimeStatus.endTimeStr} WIB)</strong> • Lokasi: <strong>{activeCeremonyInfo?.lokasi || 'Lapangan Utama UNPAK'}</strong>
                   </>
                 )}
               </p>
             </div>
-          </div>
-
-          {/* Quick Status Badges */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {hasCeremonyToday ? (
-              /* Time Status Badge (Ceremony Day) */
-              <span
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '9999px',
-                  fontSize: '0.75rem',
-                  fontWeight: 800,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: ceremonyTimeStatus.isCeremonyTime ? '#dcfce7' : ceremonyTimeStatus.isBefore ? '#fef3c7' : '#fee2e2',
-                  color: ceremonyTimeStatus.isCeremonyTime ? '#15803d' : ceremonyTimeStatus.isBefore ? '#b45309' : '#991b1b',
-                  border: `1px solid ${ceremonyTimeStatus.isCeremonyTime ? '#86efac' : ceremonyTimeStatus.isBefore ? '#fde68a' : '#fca5a5'}`,
-                }}
-              >
-                <Clock size={13} />
-                <span>
-                  {ceremonyTimeStatus.isCeremonyTime
-                    ? '08:00 - 09:00 WIB (Buka)'
-                    : ceremonyTimeStatus.isBefore
-                    ? 'Buka Pukul 08:00 WIB'
-                    : 'Waktu Upacara Berakhir'}
-                </span>
-              </span>
-            ) : (
-              /* Locked Status Badge (Non-Ceremony Day) */
-              <span
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '9999px',
-                  fontSize: '0.75rem',
-                  fontWeight: 800,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  border: '1px solid #cbd5e1',
-                }}
-              >
-                <Lock size={13} />
-                <span>Presensi Terkunci</span>
-              </span>
-            )}
-
-            {/* Location Status Badge */}
-            <span
-              style={{
-                padding: '6px 12px',
-                borderRadius: '9999px',
-                fontSize: '0.75rem',
-                fontWeight: 800,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: ceremonyLocationStatus.inRange ? '#dcfce7' : hasCeremonyToday ? '#fffbeb' : '#f8fafc',
-                color: ceremonyLocationStatus.inRange ? '#15803d' : hasCeremonyToday ? '#b45309' : '#64748b',
-                border: `1px solid ${ceremonyLocationStatus.inRange ? '#86efac' : hasCeremonyToday ? '#fde68a' : '#e2e8f0'}`,
-              }}
-            >
-              <MapPin size={13} />
-              <span>
-                {ceremonyLocationStatus.inRange
-                  ? ceremonyLocationStatus.locationName
-                  : 'Di Luar Area Upacara'}
-              </span>
-            </span>
-
-            {/* Checked-in Badge */}
-            {hasCheckedInCeremony && (
-              <span
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '9999px',
-                  background: '#dcfce7',
-                  color: '#15803d',
-                  fontSize: '0.8rem',
-                  fontWeight: 800,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  border: '1px solid #86efac',
-                  boxShadow: '0 2px 6px rgba(22, 163, 74, 0.15)',
-                }}
-              >
-                <CheckCircle2 size={15} color="#16a34a" />
-                Sudah Absen Upacara
-              </span>
-            )}
           </div>
         </div>
 
@@ -2279,25 +2263,29 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
 
         {/* Bottom Action & Feedback Section */}
         {hasCheckedInCeremony ? (
-          <div
-            style={{
-              padding: '14px 18px',
-              borderRadius: '14px',
-              background: '#f0fdf4',
-              border: '1.5px solid #bbf7d0',
-              color: '#15803d',
-              fontWeight: 700,
-              fontSize: '0.9rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-            }}
-          >
-            <CheckCircle2 size={20} color="#15803d" style={{ flexShrink: 0 }} />
-            <span>
-              Presensi Upacara Bendera Anda telah berhasil dicatat untuk hari ini. Terima kasih atas partisipasi Anda!
-            </span>
-          </div>
+          <button
+              type="button"
+              disabled={true}
+              style={{
+                width: '100%',
+                padding: '15px 20px',
+                borderRadius: '14px',
+                border: '1.5px solid #86efac',
+                background: '#dcfce7',
+                color: '#15803d',
+                fontWeight: 800,
+                fontSize: '0.975rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                cursor: 'not-allowed',
+                boxShadow: 'none',
+              }}
+            >
+              <CheckCircle2 size={18} color="#16a34a" />
+              <span>Sudah Absen Upacara Hari Ini ({todayCeremonyRecord?.created_at ? formatIndonesianTime(todayCeremonyRecord.created_at) : 'Tercatat'})</span>
+            </button>
         ) : !hasCeremonyToday ? (
           /* Non-Ceremony Day (All locked state) */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -2319,7 +2307,7 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
             >
               <Lock size={18} color="#64748b" style={{ flexShrink: 0 }} />
               <span>
-                Hari ini tidak terdapat jadwal upacara bendera. Seluruh fitur presensi upacara dikunci. Presensi upacara hanya dapat dilakukan pada tanggal 17 setiap bulan (pukul 08:00 - 09:00 WIB) atau sesuai jadwal resmi di upacara.
+                Hari ini tidak terdapat jadwal upacara bendera. Seluruh fitur presensi upacara dikunci. Presensi upacara hanya dapat dilakukan pada tanggal 17 setiap bulan (pukul 08:00 - 09:00 WIB) atau sesuai jadwal resmi di Master Upacara.
               </span>
             </div>
 
@@ -2371,9 +2359,9 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
                 <span>
                   {!ceremonyTimeStatus.isCeremonyTime
                     ? (ceremonyTimeStatus.isBefore
-                        ? 'Presensi upacara dibuka tepat pukul 08:00 hingga 09:00 WIB.'
-                        : 'Waktu pelaksanaan presensi upacara telah berakhir (08:00 - 09:00 WIB).')
-                    : 'Posisi GPS Anda berada di luar area upacara. Silakan menuju area Fakultas Teknik atau Lapangan Utama UNPAK yang ditandai pada peta di atas.'}
+                        ? `Presensi upacara dibuka tepat pukul ${ceremonyTimeStatus.startTimeStr} hingga ${ceremonyTimeStatus.endTimeStr} WIB.`
+                        : `Waktu pelaksanaan presensi upacara telah berakhir (${ceremonyTimeStatus.startTimeStr} - ${ceremonyTimeStatus.endTimeStr} WIB).`)
+                    : 'Posisi GPS Anda berada di luar area upacara. Silakan menuju area Lapangan Utama UNPAK yang ditandai pada peta di atas.'}
                 </span>
               </div>
             )}
@@ -2382,35 +2370,43 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
             <button
               type="button"
               onClick={handleCeremonyCheckIn}
-              disabled={submittingCeremony || !ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange}
+              disabled={submittingCeremony || hasCheckedInCeremony || !ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange}
               style={{
                 width: '100%',
                 padding: '15px 20px',
                 borderRadius: '14px',
-                border: 'none',
-                background: (!ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange)
+                border: hasCheckedInCeremony ? '1.5px solid #86efac' : 'none',
+                background: hasCheckedInCeremony
+                  ? '#dcfce7'
+                  : (!ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange)
                   ? '#cbd5e1'
                   : 'linear-gradient(135deg, #e11d48 0%, #be123c 100%)',
-                color: (!ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange) ? '#475569' : '#ffffff',
+                color: hasCheckedInCeremony
+                  ? '#15803d'
+                  : (!ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange)
+                  ? '#475569'
+                  : '#ffffff',
                 fontWeight: 800,
                 fontSize: '0.975rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '10px',
-                cursor: (!ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange) ? 'not-allowed' : 'pointer',
-                boxShadow: (!ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange) ? 'none' : '0 6px 20px rgba(225, 29, 72, 0.35)',
+                cursor: (hasCheckedInCeremony || !ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange) ? 'not-allowed' : 'pointer',
+                boxShadow: (hasCheckedInCeremony || !ceremonyTimeStatus.isCeremonyTime || !ceremonyLocationStatus.inRange) ? 'none' : '0 6px 20px rgba(225, 29, 72, 0.35)',
                 transition: 'all 0.2s ease',
               }}
             >
-              <Flag size={18} />
+              {hasCheckedInCeremony ? <CheckCircle2 size={18} color="#16a34a" /> : <Flag size={18} />}
               <span>
-                {submittingCeremony
+                {hasCheckedInCeremony
+                  ? `Sudah Absen Upacara Hari Ini (${todayCeremonyRecord?.created_at ? formatIndonesianTime(todayCeremonyRecord.created_at) : 'Tercatat'})`
+                  : submittingCeremony
                   ? 'Memproses Absen Upacara...'
                   : !ceremonyTimeStatus.isCeremonyTime
-                  ? (ceremonyTimeStatus.isBefore ? 'Presensi Upacara Dibuka Pukul 08:00 WIB' : 'Waktu Absen Upacara Telah Berakhir (08:00 - 09:00 WIB)')
+                  ? (ceremonyTimeStatus.isBefore ? `Presensi Upacara Dibuka Pukul ${ceremonyTimeStatus.startTimeStr} WIB` : `Waktu Absen Upacara Telah Berakhir (${ceremonyTimeStatus.startTimeStr} - ${ceremonyTimeStatus.endTimeStr} WIB)`)
                   : !ceremonyLocationStatus.inRange
-                  ? 'Di Luar Area Upacara (Menuju Teknik / Lapangan)'
+                  ? 'Di Luar Area Upacara (Menuju Lapangan Utama UNPAK)'
                   : 'Absen Upacara Sekarang'}
               </span>
             </button>
@@ -3239,6 +3235,169 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
                       </td>
                       <td style={{ padding: '16px 18px' }}>
                         {renderStatusBadge(item)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* RIWAYAT PRESENSI UPACARA BENDERA TABLE */}
+      <div className="bm-card" style={{ padding: '28px', borderRadius: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%)',
+                color: '#e11d48',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(225, 29, 72, 0.15)',
+                flexShrink: 0,
+              }}
+            >
+              <Flag size={22} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Riwayat Presensi Upacara
+                </h2>
+                <span
+                  style={{
+                    fontSize: '0.725rem',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                    background: '#ffe4e6',
+                    color: '#be123c',
+                    border: '1px solid #fecdd3',
+                  }}
+                >
+                  {filteredCeremonyHistory.length} Rekaman
+                </span>
+              </div>
+              <p style={{ fontSize: '0.825rem', color: '#64748b', marginTop: '2px', margin: 0 }}>
+                Rekaman partisipasi upacara bendera rutin tanggal 17 dan agenda upacara resmi Universitas Pakuan.
+              </p>
+            </div>
+          </div>
+
+          {/* Search Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', width: '240px' }}>
+              <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                className="bm-input"
+                placeholder="Cari tanggal / upacara..."
+                value={ceremonySearchQuery}
+                onChange={(e) => setCeremonySearchQuery(e.target.value)}
+                style={{ paddingLeft: '36px', height: '38px', fontSize: '0.85rem' }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Ceremony Attendance Table */}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
+                <th style={{ padding: '14px 18px', width: '50px' }}>No</th>
+                <th style={{ padding: '14px 18px' }}>Tanggal Upacara</th>
+                <th style={{ padding: '14px 18px' }}>Waktu Presensi</th>
+                <th style={{ padding: '14px 18px' }}>Nama Upacara</th>
+                <th style={{ padding: '14px 18px' }}>Lokasi / Sektor</th>
+                <th style={{ padding: '14px 18px' }}>Unit / Fakultas</th>
+                <th style={{ padding: '14px 18px' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <RefreshCw size={24} className="animate-spin" color="#e11d48" />
+                      <span style={{ fontWeight: 700, color: '#334155', fontSize: '0.9rem' }}>
+                        Memuat riwayat presensi upacara...
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredCeremonyHistory.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <Flag size={28} color="#cbd5e1" />
+                      <span style={{ fontWeight: 600, color: '#475569', fontSize: '0.9rem' }}>
+                        Belum ada riwayat presensi upacara tercatat.
+                      </span>
+                      <span style={{ fontSize: '0.775rem', color: '#94a3b8' }}>
+                        Presensi upacara yang Anda lakukan pada agenda upacara bendera akan tersimpan otomatis di sini.
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredCeremonyHistory.map((item, idx) => {
+                  const rawDate = String(item.tanggal || (item.created_at ? getLocalDateStr(item.created_at) : '')).slice(0, 10);
+                  const masterCeremony = masterCeremoniesList.find((m) => {
+                    const mTgl = m.tanggal ? m.tanggal.substring(0, 10) : '';
+                    return mTgl === rawDate;
+                  });
+                  const is17 = rawDate ? new Date(rawDate).getDate() === 17 : false;
+                  const ceremonyName = masterCeremony?.nama || (rawDate === todayCeremonyData?.ceremony?.tanggal ? todayCeremonyData?.ceremony?.nama : (is17 ? 'Upacara Bendera Rutin Tanggal 17' : 'Upacara Bendera UNPAK'));
+                  const ceremonyLocation = masterCeremony?.lokasi || (rawDate === todayCeremonyData?.ceremony?.tanggal ? todayCeremonyData?.ceremony?.lokasi : 'Lapangan Utama UNPAK');
+
+                  return (
+                    <tr key={item.id || idx} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s ease' }}>
+                      <td style={{ padding: '16px 18px', color: '#64748b', fontWeight: 600 }}>
+                        {idx + 1}
+                      </td>
+                      <td style={{ padding: '16px 18px', fontWeight: 700, color: '#0f172a' }}>
+                        {formatIndonesianDate(rawDate)}
+                      </td>
+                      <td style={{ padding: '16px 18px', color: '#0284c7', fontWeight: 700 }}>
+                        {item.created_at ? formatIndonesianTime(item.created_at) : '-'}
+                      </td>
+                      <td style={{ padding: '16px 18px', fontWeight: 700, color: '#be123c' }}>
+                        {ceremonyName}
+                      </td>
+                      <td style={{ padding: '16px 18px', color: '#475569' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <MapPin size={13} color="#e11d48" />
+                          {ceremonyLocation}
+                        </span>
+                      </td>
+                      <td style={{ padding: '16px 18px', color: '#64748b' }}>
+                        {item.unit || item.fakultas || item.prodi || '-'}
+                      </td>
+                      <td style={{ padding: '16px 18px' }}>
+                        <span
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            background: '#dcfce7',
+                            color: '#15803d',
+                            border: '1px solid #86efac',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <CheckCircle2 size={13} color="#16a34a" />
+                          Hadir Upacara
+                        </span>
                       </td>
                     </tr>
                   );

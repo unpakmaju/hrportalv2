@@ -135,7 +135,7 @@ func (r *SimpegRepository) GetInfo(ctx context.Context, sid string) (*domain.Use
 		Select("p.nip, null as nidn, p.nama, p.email, u.nama_unit").
 		Joins("LEFT JOIN pegawai_pekerjaans pp ON pp.pegawai_id = p.id").
 		Joins("LEFT JOIN master_units u ON u.kode_unit = pp.kode_unit").
-		Where("p.nip = ? OR p.id = ?", cleanSid, cleanSid).
+		Where("p.nip = ?", cleanSid).
 		First(&nsDetail).Error
 
 	if errNS != nil {

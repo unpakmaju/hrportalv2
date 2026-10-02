@@ -23,6 +23,7 @@ import { Modal } from '../components/Modal';
 import { Badge } from '../components/Badge';
 import { SearchableSelect } from '../components/SearchableSelect';
 import { formatIndonesianDate, getLocalDateStr } from '../utils/dateFormatter';
+import { exportLaporanPresensiXlsx } from '../utils/excelExport';
 
 const BULAN_LIST = [
   { value: 1, name: 'Januari', short: 'Jan' },
@@ -46,17 +47,17 @@ const formatJamMasuk = (str) => {
   if (!str) return '';
   if (str.includes(' ')) {
     const timePart = str.split(' ')[1];
-    return timePart.substring(0, 5);
+    if (timePart && timePart.length >= 5 && /^\d{2}:\d{2}/.test(timePart)) return timePart.substring(0, 5);
   }
   if (str.includes('T')) {
     const timePart = str.split('T')[1];
     if (timePart.startsWith('00:00')) return '07:00';
-    return timePart.substring(0, 5);
+    if (timePart && timePart.length >= 5 && /^\d{2}:\d{2}/.test(timePart)) return timePart.substring(0, 5);
   }
-  if (str.length >= 5) {
+  if (/^\d{2}:\d{2}/.test(str)) {
     return str.substring(0, 5);
   }
-  return str;
+  return '';
 };
 
 const formatJamAbsen = (masukStr, keluarStr) => {
@@ -505,57 +506,31 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
     });
   }, [rawEmployees, searchQuery, selectedFakultas, selectedProdi, selectedUnit]);
 
-  const handleExportCSV = () => {
+  const handleExportExcel = () => {
     try {
       setIsExporting(true);
       const dates = getDatesList();
       const monthName = BULAN_LIST.find((b) => b.value === selectedMonth)?.name || selectedMonth;
-      const periodLabel = periodType === 'calendar' ? 'Bulan_Penuh' : 'Cutoff_Payroll';
 
-      const dateHeaders = dates.map((d) => `${d.getDate()}/${d.getMonth() + 1}`);
-      const headers = ['No', 'NIP', 'Nama Pegawai', 'Unit Kerja', 'Fakultas', 'Prodi', 'Total Hadir', ...dateHeaders];
-
-      const rows = filteredEmployees.map((item, idx) => {
-        const p = item.pengguna || {};
-        const nip = p.nip || item.kode || '';
-        const nama = p.nama || `Pegawai ${nip}`;
-        const unit = p.unit_kerja || p.unit || '';
-        const fak = p.fakultas || '';
-        const prd = p.prodi || '';
-        const records = item.records || [];
-
-        const totalHadir = records.filter((r) => r.type === 'absen' && (r.info?.masuk || r.info?.keluar)).length;
-
-        const dayValues = dates.map((d) => {
-          const dKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-          const isSunday = d.getDay() === 0;
-          const isHoliday = holidays.has(dKey);
-
-          const rec = records.find((r) => r.tanggal === dKey);
-          if (rec) {
-            if (rec.type === 'absen') return `"${formatJamAbsen(rec.info?.masuk, rec.info?.keluar)}"`;
-            if (rec.type === 'izin') return '"Izin"';
-            if (rec.type === 'cuti') return '"Cuti"';
-            if (rec.type === 'sppd') return '"SPPD"';
-          }
-          if (isSunday || isHoliday) return '"Libur"';
-          return '"-"';
-        });
-
-        return [idx + 1, `"${nip}"`, `"${nama.replace(/"/g, '""')}"`, `"${unit.replace(/"/g, '""')}"`, `"${fak.replace(/"/g, '""')}"`, `"${prd.replace(/"/g, '""')}"`, totalHadir, ...dayValues].join(',');
+      const filename = exportLaporanPresensiXlsx({
+        employees: filteredEmployees,
+        dates,
+        holidays,
+        selectedMonth,
+        selectedYear,
+        periodType,
+        mainReportTab,
+        ceremonyList,
+        monthList: BULAN_LIST,
+        formatJamAbsen,
+        formatJamMasuk,
+        monthName,
       });
 
-      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows].join('\n');
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `Laporan_Presensi_${monthName}_${selectedYear}_${periodLabel}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast(`File Excel Laporan Presensi ${monthName} ${selectedYear} berhasil diunduh!`, 'success');
+      showToast(`File Excel (.xlsx) '${filename}' berhasil diunduh!`, 'success');
     } catch (e) {
-      showToast('Gagal mengunduh file laporan presensi', 'error');
+      console.error('Export Excel error:', e);
+      showToast('Gagal mengunduh file Excel laporan presensi', 'error');
     } finally {
       setIsExporting(false);
     }
@@ -698,13 +673,13 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
             </button>
 
             <button
-              onClick={handleExportCSV}
+              onClick={handleExportExcel}
               disabled={isExporting || loading}
               className="bm-btn-emerald"
               style={{ height: '38px', padding: '0 16px' }}
             >
               <Download size={16} />
-              <span>Export Excel</span>
+              <span>{isExporting ? 'Mengekspor...' : 'Export Excel (.xlsx)'}</span>
             </button>
           </div>
         </div>
@@ -985,10 +960,29 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                     const fakultas = p.fakultas || '-';
                     const prodi = p.prodi || '';
 
+                    const cleanNip = String(nip || '').trim();
+                    const cleanKode = String(item.kode || '').trim();
+                    const cleanNidn = String(p.nidn || '').trim();
+
                     const empCeremonies = ceremonyList.filter((c) => {
-                      const cDate = new Date(c.tanggal);
-                      const isMatchingEmp = (c.nip && c.nip === nip) || (c.nidn && c.nidn === p.nidn);
-                      return isMatchingEmp && cDate.getFullYear() === selectedYear;
+                      const cNip = String(c.nip || '').trim();
+                      const cNidn = String(c.nidn || '').trim();
+
+                      const isNipMatch = cNip !== '' && cNip !== '-' && (cNip === cleanNip || cNip === cleanKode);
+                      const isNidnMatch =
+                        cNidn !== '' &&
+                        cNidn !== '-' &&
+                        cNidn !== '0' &&
+                        cleanNidn !== '' &&
+                        cleanNidn !== '-' &&
+                        cleanNidn !== '0' &&
+                        cNidn === cleanNidn;
+
+                      if (!isNipMatch && !isNidnMatch) return false;
+
+                      const cleanDate = String(c.tanggal || c.created_at || '').substring(0, 10);
+                      const yr = parseInt(cleanDate.substring(0, 4), 10);
+                      return yr === Number(selectedYear);
                     });
 
                     const totalHadir = empCeremonies.length;
@@ -1015,13 +1009,14 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
 
                         {BULAN_LIST.map((b) => {
                           const monthCeremonies = empCeremonies.filter((c) => {
-                            const cDate = new Date(c.tanggal);
-                            return (cDate.getMonth() + 1) === b.value;
+                            const cleanDate = String(c.tanggal || c.created_at || '').substring(0, 10);
+                            const m = parseInt(cleanDate.substring(5, 7), 10);
+                            return m === b.value;
                           });
 
                           const isAttended = monthCeremonies.length > 0;
                           const firstRecord = monthCeremonies[0];
-                          const displayTime = isAttended ? (formatJamMasuk(firstRecord.created_at || firstRecord.tanggal) || '07:00') : '-';
+                          const displayTime = isAttended ? (formatJamMasuk(firstRecord.created_at) || '07:00') : '-';
 
                           return (
                             <td
