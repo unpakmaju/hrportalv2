@@ -55,18 +55,6 @@ func (h *UpdateIzinCommandHandler) Handle(ctx context.Context, cmd *UpdateIzinCo
 	}
 
 	now := time.Now()
-	if cmd.NamaPemohon != "" {
-		izin.NamaPemohon = cmd.NamaPemohon
-	}
-	if cmd.Unit != "" {
-		izin.Unit = cmd.Unit
-	}
-	if cmd.Fakultas != "" {
-		izin.Fakultas = cmd.Fakultas
-	}
-	if cmd.Prodi != "" {
-		izin.Prodi = cmd.Prodi
-	}
 	if cmd.JenisIzinID != 0 {
 		izin.JenisIzinID = int(cmd.JenisIzinID)
 	}

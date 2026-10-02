@@ -80,24 +80,6 @@ func (h *UpdateSppdCommandHandler) Handle(ctx context.Context, cmd *UpdateSppdCo
 	}
 
 	now := time.Now()
-	if cmd.Nidn != "" {
-		sppd.Nidn = cmd.Nidn
-	}
-	if cmd.Nip != "" {
-		sppd.Nip = cmd.Nip
-	}
-	if cmd.NamaPemohon != "" {
-		sppd.NamaPemohon = cmd.NamaPemohon
-	}
-	if cmd.Unit != "" {
-		sppd.Unit = cmd.Unit
-	}
-	if cmd.Fakultas != "" {
-		sppd.Fakultas = cmd.Fakultas
-	}
-	if cmd.Prodi != "" {
-		sppd.Prodi = cmd.Prodi
-	}
 	if cmd.Tujuan != "" {
 		sppd.Tujuan = cmd.Tujuan
 	}

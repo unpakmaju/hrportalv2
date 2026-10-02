@@ -50,18 +50,6 @@ func (h *UpdateCutiCommandHandler) Handle(ctx context.Context, cmd *UpdateCutiCo
 	}
 
 	now := time.Now()
-	if cmd.NamaPemohon != "" {
-		cuti.NamaPemohon = cmd.NamaPemohon
-	}
-	if cmd.Unit != "" {
-		cuti.Unit = cmd.Unit
-	}
-	if cmd.Fakultas != "" {
-		cuti.Fakultas = cmd.Fakultas
-	}
-	if cmd.Prodi != "" {
-		cuti.Prodi = cmd.Prodi
-	}
 	if cmd.JenisCutiID != 0 {
 		cuti.JenisCutiID = cmd.JenisCutiID
 	}
