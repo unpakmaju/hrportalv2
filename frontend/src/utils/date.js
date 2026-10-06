@@ -1,4 +1,4 @@
-import { formatIndonesianDate } from './dateFormatter';
+import { formatIndonesianDate, getTwoMonthDateRange } from './dateFormatter';
 
 /**
  * Mengubah string tanggal Y-m-d atau ISO 8601 menjadi format "01 Januari 2026" dalam WIB (Asia/Jakarta)
@@ -16,3 +16,5 @@ export const formatRentangTanggalIndo = (startStr, endStr) => {
   if (!endStr || startStr === endStr) return formatTanggalIndo(startStr);
   return `${formatTanggalIndo(startStr)} s/d ${formatTanggalIndo(endStr)}`;
 };
+
+export { getTwoMonthDateRange };

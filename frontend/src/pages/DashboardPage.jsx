@@ -48,7 +48,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { Modal } from '../components/Modal';
 import { Badge } from '../components/Badge';
-import { formatIndonesianDate, formatIndonesianTime, getLocalDateStr } from '../utils/dateFormatter';
+import { formatIndonesianDate, formatIndonesianTime, getLocalDateStr, getTwoMonthDateRange } from '../utils/dateFormatter';
 import { checkAttendanceLocation, getCurrentCoordinates, isWithinCampus, isWithinCeremonyLocation, checkCeremonyLocation } from '../utils/locationHelper';
 import AttendanceMap from '../components/AttendanceMap';
 
@@ -689,9 +689,11 @@ export const DashboardPage = ({ onNavigate, globalPeriodType = 'cutoff', onPerio
       }
     };
 
+    const dateRange = getTwoMonthDateRange();
+
     try {
       const [attRes, cutiRes, izinRes, sppdRes, holRes] = await Promise.allSettled([
-        executeTask('presensi', 'Data Presensi', 'Riwayat absen & status hari ini', apiClient.get('/api/v2/attendance/history')),
+        executeTask('presensi', 'Data Presensi', 'Riwayat absen & status hari ini', apiClient.get('/api/v2/attendance/history', dateRange)),
         executeTask('cuti', 'Pengajuan Cuti', 'Status cuti tahunan & sakit', apiClient.get('/api/v2/leave')),
         executeTask('izin', 'Permohonan Izin', 'Izin dinas & meninggalkan tugas', apiClient.get('/api/v2/izin')),
         executeTask('sppd', 'Perjalanan SPPD', 'Riwayat tugas & surat jalan', apiClient.get('/api/v2/sppd/history')),

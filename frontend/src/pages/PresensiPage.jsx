@@ -18,7 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
-import { getLocalDateStr } from '../utils/dateFormatter';
+import { getLocalDateStr, getTwoMonthDateRange } from '../utils/dateFormatter';
 import { checkAttendanceLocation, getCurrentCoordinates, isWithinCampus } from '../utils/locationHelper';
 
 export const PresensiPage = () => {
@@ -82,7 +82,8 @@ export const PresensiPage = () => {
   const fetchAttendanceHistory = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/api/v2/attendance/history');
+      const dateRange = getTwoMonthDateRange();
+      const res = await apiClient.get('/api/v2/attendance/history', dateRange);
       let items = [];
       if (Array.isArray(res)) {
         items = res;

@@ -159,3 +159,29 @@ export const formatIndonesianDateRange = (startDateInput, endDateInput, showDura
   const rangeText = `${startFormatted} s/d ${endFormatted}`;
   return showDuration ? `${rangeText} (${days} Hari)` : rangeText;
 };
+
+/**
+ * Mendapatkan rentang tanggal 2 bulan (awal bulan lalu s/d akhir bulan ini)
+ * Contoh: Sekarang tanggal 06-10-2026 -> { tanggal_mulai: '2026-09-01', tanggal_akhir: '2026-10-31' }
+ */
+export const getTwoMonthDateRange = (baseDate = new Date()) => {
+  const localStr = getLocalDateStr(baseDate) || getLocalDateStr();
+  const [yStr, mStr] = localStr.split('-');
+  const year = parseInt(yStr, 10);
+  const month = parseInt(mStr, 10) - 1; // 0-indexed
+
+  // Awal bulan lalu: tanggal 1 dari bulan sebelumnya
+  const startDate = new Date(year, month - 1, 1);
+  const startY = startDate.getFullYear();
+  const startM = String(startDate.getMonth() + 1).padStart(2, '0');
+  const tanggal_mulai = `${startY}-${startM}-01`;
+
+  // Akhir bulan ini: hari terakhir dari bulan sekarang
+  const endDate = new Date(year, month + 1, 0);
+  const endY = endDate.getFullYear();
+  const endM = String(endDate.getMonth() + 1).padStart(2, '0');
+  const endD = String(endDate.getDate()).padStart(2, '0');
+  const tanggal_akhir = `${endY}-${endM}-${endD}`;
+
+  return { tanggal_mulai, tanggal_akhir };
+};
