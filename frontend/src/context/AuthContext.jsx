@@ -6,12 +6,12 @@ const AuthContext = createContext(null);
 
 export const SSO_CONFIG = {
   authUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/auth',
-  tokenUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/token',
-  logoutUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/logout',
-  userInfoUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/userinfo',
+  tokenUrl: '/api/sso/token',
+  logoutUrl: '/api/sso/logout',
+  userInfoUrl: '/api/sso/userinfo',
   clientId: 'hrportal',
   get redirectUri() {
-    return "http://gerbang.unpak.ac.id";
+    return `${window.location.origin}/login`;
   },
 };
 
@@ -416,7 +416,7 @@ export const AuthProvider = ({ children }) => {
                   console.warn('Background token refresh note:', e);
                 }
               }
-            } else {
+            } else if (introRes.status === 401 || introRes.status === 403) {
               console.warn(`Keycloak userinfo invalid (${introRes.status}), mencoba refresh token...`);
               if (refreshToken) {
                 const retryRefresh = await refreshAccessToken();
@@ -447,6 +447,8 @@ export const AuthProvider = ({ children }) => {
                 setLoading(false);
                 return;
               }
+            } else {
+              console.warn(`Keycloak userinfo non-auth status (${introRes.status}), mempertahankan sesi aktif.`);
             }
           } catch (netErr) {
             console.warn('Network issue during Keycloak userinfo verification:', netErr);

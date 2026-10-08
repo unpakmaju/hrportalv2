@@ -33,7 +33,7 @@ export const apiClient = {
       return endpoint;
     }
     let path = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
-    if (path.startsWith('/api/') && !path.startsWith('/api/v2/')) {
+    if (path.startsWith('/api/') && !path.startsWith('/api/v2/') && !path.startsWith('/api/sso/')) {
       path = path.replace('/api/', '/api/v2/');
     }
     const baseUrl = (LOCAL_API_BASE || '').replace(/\/+$/, '');
@@ -51,7 +51,7 @@ export const apiClient = {
         refresh_token: refreshToken,
       });
 
-      const response = await fetch('https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/token', {
+      const response = await fetch('/api/sso/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
