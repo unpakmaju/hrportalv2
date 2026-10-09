@@ -51,7 +51,7 @@ export const apiClient = {
         refresh_token: refreshToken,
       });
 
-      const response = await fetch('/api/sso/token', {
+      const response = await fetch('/api/v2/sso/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',

@@ -6,9 +6,9 @@ const AuthContext = createContext(null);
 
 export const SSO_CONFIG = {
   authUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/auth',
-  tokenUrl: '/api/sso/token',
-  logoutUrl: '/api/sso/logout',
-  userInfoUrl: '/api/sso/userinfo',
+  tokenUrl: '/api/v2/sso/token',
+  logoutUrl: '/api/v2/sso/logout',
+  userInfoUrl: '/api/v2/sso/userinfo',
   clientId: 'hrportal',
   get redirectUri() {
     return `${window.location.origin}/login`;
@@ -586,8 +586,25 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`SSO Exchange Gagal (${response.status}): ${errText}`);
+        let cleanErr = '';
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const errJson = await response.json();
+            cleanErr = errJson.error_description || errJson.error || JSON.stringify(errJson);
+          } else {
+            const raw = await response.text();
+            if (raw.includes('<title>')) {
+              const match = raw.match(/<title>([^<]+)<\/title>/i);
+              cleanErr = match ? match[1].trim() : `Server Error (${response.status})`;
+            } else {
+              cleanErr = raw.substring(0, 150) || `HTTP ${response.status}`;
+            }
+          }
+        } catch {
+          cleanErr = `HTTP ${response.status}`;
+        }
+        throw new Error(`SSO Exchange Gagal (${response.status}): ${cleanErr}`);
       }
 
       const tokenData = await response.json();
