@@ -41,10 +41,10 @@ export const LoginPage = () => {
 
         setLoading(true);
         setErrorMessage('');
-        showToast('Memproses autentikasi Unpak SSO Keycloak...', 'info');
+        // showToast('Memproses autentikasi Unpak SSO Keycloak...', 'info');
         const res = await exchangeSsoCode(code);
         if (res.success) {
-          showToast(`Selamat datang, ${res.user.name}!`, 'success');
+          // showToast(`Selamat datang, ${res.user.name}!`, 'success');
           window.history.pushState(null, '', '/dashboard');
         } else {
           setErrorMessage(res.error || 'Gagal login via Unpak SSO');
@@ -215,7 +215,7 @@ export const LoginPage = () => {
 
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.775rem', color: '#059669', background: '#ecfdf5', padding: '6px 12px', borderRadius: '9999px', fontWeight: 700 }}>
           <ShieldCheck size={14} color="#10b981" />
-          <span>Terintegrasi dengan Keycloak SSO UNPAK</span>
+          <span>Terintegrasi dengan SSO UNPAK</span>
         </div>
 
         <div style={{ marginTop: '28px', paddingTop: '16px', borderTop: '1px solid #e5e7eb', fontSize: '0.725rem', color: '#9ca3af' }}>
