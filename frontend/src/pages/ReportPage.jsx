@@ -522,13 +522,75 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
     });
   }, [rawEmployees, searchQuery, selectedFakultas, selectedProdi, selectedUnit]);
 
-  const sortedMasterUpacara = useMemo(() => {
-    return [...masterUpacaraList].sort((a, b) => {
+  // 1 Looping setiap tanggal 17 di masing-masing bulan, lalu data master upacara (tanggal bulan), sort, baru masukkan datanya
+  const ceremonyColumns = useMemo(() => {
+    // 1. Looping setiap tanggal 17 di masing-masing bulan (Jan - Des)
+    const routineList = BULAN_LIST.map((b) => {
+      const padMonth = String(b.value).padStart(2, '0');
+      const dateStr = `${selectedYear}-${padMonth}-17`;
+      return {
+        key: `routine-17-${b.value}`,
+        nama: `Upacara 17 ${b.name}`,
+        shortLabel: `17 ${b.short}`,
+        subLabel: `${selectedYear}`,
+        tanggal: dateStr,
+        isRoutine: true,
+        month: b.value,
+      };
+    });
+
+    // 2. Data master upacara
+    const masterByDate = new Map();
+    const masterExtras = [];
+
+    (masterUpacaraList || []).forEach((m) => {
+      const dStr = String(m.tanggal || '').substring(0, 10);
+      const yr = dStr.substring(0, 4);
+      if (yr && yr !== String(selectedYear)) return;
+
+      const parts = dStr.split('-');
+      const day = parts[2];
+      const monthNum = parseInt(parts[1], 10);
+      const dateFormatted = dStr ? formatIndonesianDate(dStr) : dStr;
+
+      const masterItem = {
+        key: `master-${m.id || dStr}`,
+        id: m.id,
+        nama: m.nama || 'Upacara',
+        shortLabel: m.nama || 'Upacara',
+        subLabel: dateFormatted,
+        tanggal: dStr,
+        isRoutine: false,
+        month: monthNum,
+      };
+
+      if (day === '17') {
+        masterByDate.set(dStr, masterItem);
+      } else {
+        masterExtras.push(masterItem);
+      }
+    });
+
+    // Ganti routine 17 jika sudah didefinisikan khusus di master upacara
+    const base17List = routineList.map((r) => {
+      if (masterByDate.has(r.tanggal)) {
+        return masterByDate.get(r.tanggal);
+      }
+      return r;
+    });
+
+    // Gabungkan routine 17 + master upacara
+    const allCols = [...base17List, ...masterExtras];
+
+    // 3. Sort berdasarkan tanggal secara kronologis (tanggal ASC)
+    allCols.sort((a, b) => {
       const da = String(a.tanggal || '').substring(0, 10);
       const db = String(b.tanggal || '').substring(0, 10);
       return da.localeCompare(db);
     });
-  }, [masterUpacaraList]);
+
+    return allCols;
+  }, [selectedYear, masterUpacaraList]);
 
   const handleExportExcel = () => {
     try {
@@ -546,7 +608,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
         mainReportTab,
         ceremonyList,
         monthList: BULAN_LIST,
-        masterUpacaraList: sortedMasterUpacara,
+        masterUpacaraList: ceremonyColumns,
         formatJamAbsen,
         formatJamMasuk,
         monthName,
@@ -954,57 +1016,60 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                   <th style={{ minWidth: '160px', padding: '12px' }}>FAKULTAS &amp; PRODI</th>
                   <th style={{ width: '85px', padding: '12px', textAlign: 'center', color: '#d97706' }}>TOTAL HADIR</th>
 
-                  {sortedMasterUpacara.length > 0 ? (
-                    sortedMasterUpacara.map((upacara) => {
-                      const dStr = String(upacara.tanggal || '').substring(0, 10);
-                      const formattedDate = dStr ? formatIndonesianDate(dStr) : '-';
-
-                      return (
-                        <th
-                          key={upacara.id || dStr}
+                  {ceremonyColumns.map((col) => {
+                    const isMaster = !col.isRoutine;
+                    return (
+                      <th
+                        key={col.key}
+                        style={{
+                          minWidth: isMaster ? '120px' : '75px',
+                          maxWidth: isMaster ? '160px' : '90px',
+                          padding: '10px 8px',
+                          textAlign: 'center',
+                          verticalAlign: 'middle',
+                          backgroundColor: isMaster ? '#f0fdf4' : '#f8fafc',
+                          borderLeft: '1px solid #e5e7eb',
+                        }}
+                        title={`${col.nama} (${col.subLabel || col.tanggal})`}
+                      >
+                        <div
                           style={{
-                            minWidth: '130px',
-                            maxWidth: '180px',
-                            padding: '10px 12px',
-                            textAlign: 'center',
-                            verticalAlign: 'middle',
+                            fontWeight: 800,
+                            color: isMaster ? '#166534' : '#1f2937',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            fontSize: isMaster ? '0.78rem' : '0.8rem',
                           }}
-                          title={`${upacara.nama} (${formattedDate})`}
                         >
-                          <div
-                            style={{
-                              fontWeight: 800,
-                              color: '#1f2937',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {upacara.nama}
-                          </div>
-                          <div style={{ fontSize: '0.70rem', color: '#6b7280', marginTop: '2px', fontWeight: 500 }}>
-                            {formattedDate}
-                          </div>
-                        </th>
-                      );
-                    })
-                  ) : (
-                    <th style={{ minWidth: '200px', padding: '12px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}>
-                      Belum ada agenda upacara {selectedYear}
-                    </th>
-                  )}
+                          {col.shortLabel}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.67rem',
+                            color: isMaster ? '#15803d' : '#6b7280',
+                            marginTop: '2px',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {col.subLabel}
+                        </div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5 + Math.max(1, sortedMasterUpacara.length)} style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                    <td colSpan={5 + ceremonyColumns.length} style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
                       Memuat matriks presensi upacara tahun {selectedYear}...
                     </td>
                   </tr>
                 ) : paginatedEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={5 + Math.max(1, sortedMasterUpacara.length)} style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                    <td colSpan={5 + ceremonyColumns.length} style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
                       Tidak ada data presensi upacara pada kriteria filter terpilih.
                     </td>
                   </tr>
@@ -1045,13 +1110,28 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
 
                     const empRecordUpacaras = (item.records || []).filter((r) => r.type === 'upacara');
 
-                    const totalHadir = sortedMasterUpacara.length > 0
-                      ? sortedMasterUpacara.filter((upacara) => {
-                          const uDate = String(upacara.tanggal || '').substring(0, 10);
-                          return empCeremonies.some((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === uDate) ||
-                            empRecordUpacaras.some((r) => String(r.tanggal || '').substring(0, 10) === uDate);
-                        }).length
-                      : (empCeremonies.length || empRecordUpacaras.length);
+                    // Calculate total hadir across all ceremony columns
+                    const totalHadir = ceremonyColumns.filter((col) => {
+                      const colDate = col.tanggal;
+                      const exact = empCeremonies.some((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === colDate) ||
+                        empRecordUpacaras.some((r) => String(r.tanggal || '').substring(0, 10) === colDate);
+                      if (exact) return true;
+
+                      if (col.isRoutine) {
+                        return empCeremonies.some((c) => {
+                          const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
+                          const cMonth = parseInt(cDate.substring(5, 7), 10);
+                          if (cMonth !== col.month) return false;
+                          return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === cDate);
+                        }) || empRecordUpacaras.some((r) => {
+                          const rDate = String(r.tanggal || '').substring(0, 10);
+                          const rMonth = parseInt(rDate.substring(5, 7), 10);
+                          if (rMonth !== col.month) return false;
+                          return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === rDate);
+                        });
+                      }
+                      return false;
+                    }).length;
 
                     return (
                       <tr key={item.kode || index} style={{ borderBottom: '1px solid #f3f4f6' }}>
@@ -1073,49 +1153,59 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                           </span>
                         </td>
 
-                        {sortedMasterUpacara.length > 0 ? (
-                          sortedMasterUpacara.map((upacara) => {
-                            const uDate = String(upacara.tanggal || '').substring(0, 10);
+                        {ceremonyColumns.map((col) => {
+                          const colDate = col.tanggal;
 
-                            const matchedRecord = empCeremonies.find((c) => {
+                          // 1. Exact date match
+                          let matchedRecord = empCeremonies.find((c) => {
+                            const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
+                            return cDate === colDate;
+                          }) || empRecordUpacaras.find((r) => {
+                            const rDate = String(r.tanggal || '').substring(0, 10);
+                            return rDate === colDate;
+                          });
+
+                          // 2. Fallback for routine 17-an column if attendance in that month was on adjacent date
+                          if (!matchedRecord && col.isRoutine) {
+                            matchedRecord = empCeremonies.find((c) => {
                               const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
-                              return cDate === uDate;
+                              const cMonth = parseInt(cDate.substring(5, 7), 10);
+                              if (cMonth !== col.month) return false;
+                              return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === cDate);
                             }) || empRecordUpacaras.find((r) => {
                               const rDate = String(r.tanggal || '').substring(0, 10);
-                              return rDate === uDate;
+                              const rMonth = parseInt(rDate.substring(5, 7), 10);
+                              if (rMonth !== col.month) return false;
+                              return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === rDate);
                             });
+                          }
 
-                            const isAttended = Boolean(matchedRecord);
-                            const displayTime = isAttended
-                              ? (formatJamMasuk(matchedRecord.created_at || matchedRecord.tanggal || matchedRecord.info?.masuk) || '07:00')
-                              : '-';
+                          const isAttended = Boolean(matchedRecord);
+                          const displayTime = isAttended
+                            ? (formatJamMasuk(matchedRecord.created_at || matchedRecord.tanggal || matchedRecord.info?.masuk) || '07:00')
+                            : '-';
 
-                            return (
-                              <td
-                                key={upacara.id || uDate}
-                                onClick={() => isAttended && handleCellClick(p, uDate, { ...matchedRecord, upacaraNama: upacara.nama }, true)}
-                                style={{
-                                  textAlign: 'center',
-                                  fontWeight: isAttended ? 800 : 400,
-                                  fontSize: isAttended ? '0.75rem' : '0.8rem',
-                                  color: isAttended ? '#15803d' : '#9ca3af',
-                                  backgroundColor: isAttended ? '#dcfce7' : 'transparent',
-                                  cursor: isAttended ? 'pointer' : 'default',
-                                  padding: '8px 4px',
-                                  borderLeft: '1px solid #f1f5f9',
-                                  borderRight: '1px solid #f1f5f9',
-                                }}
-                                title={isAttended ? `${upacara.nama}: Hadir (${displayTime})` : `${upacara.nama}: Tidak Hadir`}
-                              >
-                                {displayTime}
-                              </td>
-                            );
-                          })
-                        ) : (
-                          <td style={{ textAlign: 'center', color: '#9ca3af', padding: '12px' }}>
-                            -
-                          </td>
-                        )}
+                          return (
+                            <td
+                              key={col.key}
+                              onClick={() => isAttended && handleCellClick(p, matchedRecord.tanggal || colDate, { ...matchedRecord, upacaraNama: col.nama }, true)}
+                              style={{
+                                textAlign: 'center',
+                                fontWeight: isAttended ? 800 : 400,
+                                fontSize: isAttended ? '0.75rem' : '0.8rem',
+                                color: isAttended ? '#15803d' : '#9ca3af',
+                                backgroundColor: isAttended ? '#dcfce7' : 'transparent',
+                                cursor: isAttended ? 'pointer' : 'default',
+                                padding: '8px 4px',
+                                borderLeft: '1px solid #f1f5f9',
+                                borderRight: '1px solid #f1f5f9',
+                              }}
+                              title={isAttended ? `${col.nama}: Hadir (${displayTime})` : `${col.nama}: Tidak Hadir`}
+                            >
+                              {displayTime}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })

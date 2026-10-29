@@ -458,34 +458,95 @@ export function exportLaporanPresensiXlsx({
   // TAB 1: PRESENSI UPACARA EXPORT
   // =========================================================================
   if (mainReportTab === 'upacara') {
-    const sortedUpacara = (masterUpacaraList && masterUpacaraList.length > 0)
-      ? [...masterUpacaraList].sort((a, b) => {
-          const da = String(a.tanggal || '').substring(0, 10);
-          const db = String(b.tanggal || '').substring(0, 10);
-          return da.localeCompare(db);
-        })
-      : [];
+    let ceremonyCols = [];
 
-    const hasMasterUpacara = sortedUpacara.length > 0;
+    // If masterUpacaraList already contains pre-built columns with key / shortLabel
+    if (masterUpacaraList && masterUpacaraList.length > 0 && masterUpacaraList[0].key) {
+      ceremonyCols = masterUpacaraList;
+    } else {
+      // 1. Build routine 17th of each month
+      const routineList = (monthList && monthList.length > 0 ? monthList : [
+        { value: 1, name: 'Januari', short: 'Jan' },
+        { value: 2, name: 'Februari', short: 'Feb' },
+        { value: 3, name: 'Maret', short: 'Mar' },
+        { value: 4, name: 'April', short: 'Apr' },
+        { value: 5, name: 'Mei', short: 'Mei' },
+        { value: 6, name: 'Juni', short: 'Jun' },
+        { value: 7, name: 'Juli', short: 'Jul' },
+        { value: 8, name: 'Agustus', short: 'Agu' },
+        { value: 9, name: 'September', short: 'Sep' },
+        { value: 10, name: 'Oktober', short: 'Okt' },
+        { value: 11, name: 'November', short: 'Nov' },
+        { value: 12, name: 'Desember', short: 'Des' },
+      ]).map((b) => {
+        const padMonth = String(b.value).padStart(2, '0');
+        const dateStr = `${selectedYear}-${padMonth}-17`;
+        return {
+          key: `routine-17-${b.value}`,
+          nama: `Upacara 17 ${b.name || b.short}`,
+          shortLabel: `17 ${b.short || b.name}`,
+          subLabel: `${selectedYear}`,
+          tanggal: dateStr,
+          isRoutine: true,
+          month: b.value,
+        };
+      });
 
-    const dynamicColWidths = hasMasterUpacara
-      ? sortedUpacara.map((u) => Math.max(16, Math.min(32, String(u.nama || '').length + 14)))
-      : monthList.map(() => 12);
+      const masterByDate = new Map();
+      const masterExtras = [];
+
+      (masterUpacaraList || []).forEach((m) => {
+        const dStr = String(m.tanggal || '').substring(0, 10);
+        const yr = dStr.substring(0, 4);
+        if (yr && yr !== String(selectedYear)) return;
+
+        const parts = dStr.split('-');
+        const day = parts[2];
+        const monthNum = parseInt(parts[1], 10);
+
+        const masterItem = {
+          key: `master-${m.id || dStr}`,
+          id: m.id,
+          nama: m.nama || 'Upacara',
+          shortLabel: m.nama || 'Upacara',
+          subLabel: dStr,
+          tanggal: dStr,
+          isRoutine: false,
+          month: monthNum,
+        };
+
+        if (day === '17') {
+          masterByDate.set(dStr, masterItem);
+        } else {
+          masterExtras.push(masterItem);
+        }
+      });
+
+      const base17List = routineList.map((r) => {
+        if (masterByDate.has(r.tanggal)) {
+          return masterByDate.get(r.tanggal);
+        }
+        return r;
+      });
+
+      ceremonyCols = [...base17List, ...masterExtras];
+      ceremonyCols.sort((a, b) => {
+        const da = String(a.tanggal || '').substring(0, 10);
+        const db = String(b.tanggal || '').substring(0, 10);
+        return da.localeCompare(db);
+      });
+    }
+
+    const dynamicColWidths = ceremonyCols.map((c) =>
+      c.isRoutine ? 12 : Math.max(16, Math.min(32, String(c.shortLabel || '').length + 10))
+    );
 
     const upacaraColWidths = [6, 20, 32, 26, 22, 22, 14, ...dynamicColWidths];
 
-    const dynamicHeaders = hasMasterUpacara
-      ? sortedUpacara.map((u) => {
-          const dStr = String(u.tanggal || '').substring(0, 10);
-          return {
-            v: `${u.nama || 'Upacara'} (${dStr})`,
-            s: EXCEL_STYLES.HEADER_EMERALD,
-          };
-        })
-      : monthList.map((m) => ({
-          v: `${m.value} - ${m.short || m.name}`,
-          s: EXCEL_STYLES.HEADER_EMERALD,
-        }));
+    const dynamicHeaders = ceremonyCols.map((c) => ({
+      v: c.isRoutine ? `${c.shortLabel} (${c.subLabel || selectedYear})` : `${c.shortLabel} (${c.subLabel || c.tanggal})`,
+      s: EXCEL_STYLES.HEADER_EMERALD,
+    }));
 
     const upacaraHeaders = [
       { v: 'No', s: EXCEL_STYLES.HEADER_EMERALD },
@@ -534,13 +595,27 @@ export function exportLaporanPresensiXlsx({
 
       const empRecordUpacaras = (item.records || []).filter((r) => r.type === 'upacara');
 
-      const totalUpacara = hasMasterUpacara
-        ? sortedUpacara.filter((u) => {
-            const uDate = String(u.tanggal || '').substring(0, 10);
-            return empCeremonies.some((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === uDate) ||
-              empRecordUpacaras.some((r) => String(r.tanggal || '').substring(0, 10) === uDate);
-          }).length
-        : empCeremonies.length;
+      const totalUpacara = ceremonyCols.filter((col) => {
+        const colDate = col.tanggal;
+        const exact = empCeremonies.some((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === colDate) ||
+          empRecordUpacaras.some((r) => String(r.tanggal || '').substring(0, 10) === colDate);
+        if (exact) return true;
+
+        if (col.isRoutine) {
+          return empCeremonies.some((c) => {
+            const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
+            const cMonth = parseInt(cDate.substring(5, 7), 10);
+            if (cMonth !== col.month) return false;
+            return !ceremonyCols.some((other) => other.key !== col.key && other.tanggal === cDate);
+          }) || empRecordUpacaras.some((r) => {
+            const rDate = String(r.tanggal || '').substring(0, 10);
+            const rMonth = parseInt(rDate.substring(5, 7), 10);
+            if (rMonth !== col.month) return false;
+            return !ceremonyCols.some((other) => other.key !== col.key && other.tanggal === rDate);
+          });
+        }
+        return false;
+      }).length;
 
       const rowCells = [
         { v: idx + 1, s: EXCEL_STYLES.NORMAL_CENTER },
@@ -552,36 +627,32 @@ export function exportLaporanPresensiXlsx({
         { v: totalUpacara, s: EXCEL_STYLES.TOTAL_HADIR },
       ];
 
-      if (hasMasterUpacara) {
-        sortedUpacara.forEach((u) => {
-          const uDate = String(u.tanggal || '').substring(0, 10);
-          const matched = empCeremonies.find((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === uDate) ||
-            empRecordUpacaras.find((r) => String(r.tanggal || '').substring(0, 10) === uDate);
+      ceremonyCols.forEach((col) => {
+        const colDate = col.tanggal;
+        let matched = empCeremonies.find((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === colDate) ||
+          empRecordUpacaras.find((r) => String(r.tanggal || '').substring(0, 10) === colDate);
 
-          if (matched) {
-            const displayTime = extractCeremonyTime(matched);
-            rowCells.push({ v: displayTime, s: EXCEL_STYLES.HADIR });
-          } else {
-            rowCells.push({ v: '-', s: EXCEL_STYLES.EMPTY });
-          }
-        });
-      } else {
-        monthList.forEach((b) => {
-          const monthCeremonies = empCeremonies.filter((c) => {
-            const parts = parseDateParts(c.tanggal || c.created_at);
-            return parts && parts.month === b.value;
+        if (!matched && col.isRoutine) {
+          matched = empCeremonies.find((c) => {
+            const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
+            const cMonth = parseInt(cDate.substring(5, 7), 10);
+            if (cMonth !== col.month) return false;
+            return !ceremonyCols.some((other) => other.key !== col.key && other.tanggal === cDate);
+          }) || empRecordUpacaras.find((r) => {
+            const rDate = String(r.tanggal || '').substring(0, 10);
+            const rMonth = parseInt(rDate.substring(5, 7), 10);
+            if (rMonth !== col.month) return false;
+            return !ceremonyCols.some((other) => other.key !== col.key && other.tanggal === rDate);
           });
+        }
 
-          const isAttended = monthCeremonies.length > 0;
-          if (isAttended) {
-            const firstRecord = monthCeremonies[0];
-            const displayTime = extractCeremonyTime(firstRecord);
-            rowCells.push({ v: displayTime, s: EXCEL_STYLES.HADIR });
-          } else {
-            rowCells.push({ v: '-', s: EXCEL_STYLES.EMPTY });
-          }
-        });
-      }
+        if (matched) {
+          const displayTime = extractCeremonyTime(matched);
+          rowCells.push({ v: displayTime, s: EXCEL_STYLES.HADIR });
+        } else {
+          rowCells.push({ v: '-', s: EXCEL_STYLES.EMPTY });
+        }
+      });
 
       upacaraRows.push(rowCells);
     });
