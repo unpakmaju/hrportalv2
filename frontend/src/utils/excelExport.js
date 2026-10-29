@@ -415,7 +415,7 @@ function parseDateParts(str) {
  */
 function extractCeremonyTime(record) {
   if (!record) return '07:00';
-  const candidates = [record.created_at, record.jam_masuk, record.jam];
+  const candidates = [record.created_at, record.jam_masuk, record.jam, record.info?.masuk];
   for (const c of candidates) {
     if (!c || typeof c !== 'string') continue;
     if (c.includes(' ')) {
@@ -447,6 +447,7 @@ export function exportLaporanPresensiXlsx({
   mainReportTab = 'presensi',
   ceremonyList = [],
   monthList = [],
+  masterUpacaraList = [],
   formatJamAbsen = (m, k) => `${m || '-'} - ${k || '-'}`,
   formatJamMasuk = (t) => t || '07:00',
   monthName = '',
@@ -457,7 +458,35 @@ export function exportLaporanPresensiXlsx({
   // TAB 1: PRESENSI UPACARA EXPORT
   // =========================================================================
   if (mainReportTab === 'upacara') {
-    const upacaraColWidths = [6, 20, 32, 26, 22, 22, 14, ...monthList.map(() => 12)];
+    const sortedUpacara = (masterUpacaraList && masterUpacaraList.length > 0)
+      ? [...masterUpacaraList].sort((a, b) => {
+          const da = String(a.tanggal || '').substring(0, 10);
+          const db = String(b.tanggal || '').substring(0, 10);
+          return da.localeCompare(db);
+        })
+      : [];
+
+    const hasMasterUpacara = sortedUpacara.length > 0;
+
+    const dynamicColWidths = hasMasterUpacara
+      ? sortedUpacara.map((u) => Math.max(16, Math.min(32, String(u.nama || '').length + 14)))
+      : monthList.map(() => 12);
+
+    const upacaraColWidths = [6, 20, 32, 26, 22, 22, 14, ...dynamicColWidths];
+
+    const dynamicHeaders = hasMasterUpacara
+      ? sortedUpacara.map((u) => {
+          const dStr = String(u.tanggal || '').substring(0, 10);
+          return {
+            v: `${u.nama || 'Upacara'} (${dStr})`,
+            s: EXCEL_STYLES.HEADER_EMERALD,
+          };
+        })
+      : monthList.map((m) => ({
+          v: `${m.value} - ${m.short || m.name}`,
+          s: EXCEL_STYLES.HEADER_EMERALD,
+        }));
+
     const upacaraHeaders = [
       { v: 'No', s: EXCEL_STYLES.HEADER_EMERALD },
       { v: 'NIP', s: EXCEL_STYLES.HEADER_EMERALD },
@@ -466,10 +495,7 @@ export function exportLaporanPresensiXlsx({
       { v: 'Fakultas', s: EXCEL_STYLES.HEADER_EMERALD },
       { v: 'Prodi', s: EXCEL_STYLES.HEADER_EMERALD },
       { v: 'Total Hadir', s: EXCEL_STYLES.HEADER_EMERALD },
-      ...monthList.map((m) => ({
-        v: `${m.value} - ${m.short || m.name}`,
-        s: EXCEL_STYLES.HEADER_EMERALD,
-      })),
+      ...dynamicHeaders,
     ];
 
     const upacaraRows = [upacaraHeaders];
@@ -506,7 +532,15 @@ export function exportLaporanPresensiXlsx({
         return parts && parts.year === Number(selectedYear);
       });
 
-      const totalUpacara = empCeremonies.length;
+      const empRecordUpacaras = (item.records || []).filter((r) => r.type === 'upacara');
+
+      const totalUpacara = hasMasterUpacara
+        ? sortedUpacara.filter((u) => {
+            const uDate = String(u.tanggal || '').substring(0, 10);
+            return empCeremonies.some((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === uDate) ||
+              empRecordUpacaras.some((r) => String(r.tanggal || '').substring(0, 10) === uDate);
+          }).length
+        : empCeremonies.length;
 
       const rowCells = [
         { v: idx + 1, s: EXCEL_STYLES.NORMAL_CENTER },
@@ -518,21 +552,36 @@ export function exportLaporanPresensiXlsx({
         { v: totalUpacara, s: EXCEL_STYLES.TOTAL_HADIR },
       ];
 
-      monthList.forEach((b) => {
-        const monthCeremonies = empCeremonies.filter((c) => {
-          const parts = parseDateParts(c.tanggal || c.created_at);
-          return parts && parts.month === b.value;
-        });
+      if (hasMasterUpacara) {
+        sortedUpacara.forEach((u) => {
+          const uDate = String(u.tanggal || '').substring(0, 10);
+          const matched = empCeremonies.find((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === uDate) ||
+            empRecordUpacaras.find((r) => String(r.tanggal || '').substring(0, 10) === uDate);
 
-        const isAttended = monthCeremonies.length > 0;
-        if (isAttended) {
-          const firstRecord = monthCeremonies[0];
-          const displayTime = extractCeremonyTime(firstRecord);
-          rowCells.push({ v: displayTime, s: EXCEL_STYLES.HADIR });
-        } else {
-          rowCells.push({ v: '-', s: EXCEL_STYLES.EMPTY });
-        }
-      });
+          if (matched) {
+            const displayTime = extractCeremonyTime(matched);
+            rowCells.push({ v: displayTime, s: EXCEL_STYLES.HADIR });
+          } else {
+            rowCells.push({ v: '-', s: EXCEL_STYLES.EMPTY });
+          }
+        });
+      } else {
+        monthList.forEach((b) => {
+          const monthCeremonies = empCeremonies.filter((c) => {
+            const parts = parseDateParts(c.tanggal || c.created_at);
+            return parts && parts.month === b.value;
+          });
+
+          const isAttended = monthCeremonies.length > 0;
+          if (isAttended) {
+            const firstRecord = monthCeremonies[0];
+            const displayTime = extractCeremonyTime(firstRecord);
+            rowCells.push({ v: displayTime, s: EXCEL_STYLES.HADIR });
+          } else {
+            rowCells.push({ v: '-', s: EXCEL_STYLES.EMPTY });
+          }
+        });
+      }
 
       upacaraRows.push(rowCells);
     });

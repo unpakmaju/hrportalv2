@@ -107,6 +107,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
   const [rawEmployees, setRawEmployees] = useState([]);
   const [holidays, setHolidays] = useState(new Set());
   const [ceremonyList, setCeremonyList] = useState([]);
+  const [masterUpacaraList, setMasterUpacaraList] = useState([]);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -217,10 +218,11 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
     setLoading(true);
     const { startStr, endStr } = getPeriodDates();
     try {
-      const [reportRes, holidayRes, ceremonyRes] = await Promise.allSettled([
+      const [reportRes, holidayRes, ceremonyRes, masterUpacaraRes] = await Promise.allSettled([
         apiClient.get('/api/v2/laporan/all', { tanggal_mulai: startStr, tanggal_akhir: endStr }),
         apiClient.get('/api/v2/holiday', { year: selectedYear }),
         apiClient.get('/api/v2/ceremony-attendance'),
+        apiClient.get('/api/v2/master-upacara', { tahun: selectedYear }),
       ]);
 
       let empList = [];
@@ -247,9 +249,23 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
         else if (val.data && Array.isArray(val.data)) cList = val.data;
       }
 
+      let muList = [];
+      if (masterUpacaraRes.status === 'fulfilled' && masterUpacaraRes.value) {
+        const val = masterUpacaraRes.value;
+        if (Array.isArray(val)) muList = val;
+        else if (val.data && Array.isArray(val.data)) muList = val.data;
+      }
+
+      // Filter by selectedYear
+      const filteredMu = muList.filter((m) => {
+        const yr = String(m.tanggal || '').substring(0, 4);
+        return !yr || yr === String(selectedYear);
+      });
+
       setHolidays(holidaySet);
       setRawEmployees(empList);
       setCeremonyList(cList);
+      setMasterUpacaraList(filteredMu);
     } catch (err) {
       showToast(err.message || 'Gagal memuat rekap data laporan', 'error');
     } finally {
@@ -506,6 +522,14 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
     });
   }, [rawEmployees, searchQuery, selectedFakultas, selectedProdi, selectedUnit]);
 
+  const sortedMasterUpacara = useMemo(() => {
+    return [...masterUpacaraList].sort((a, b) => {
+      const da = String(a.tanggal || '').substring(0, 10);
+      const db = String(b.tanggal || '').substring(0, 10);
+      return da.localeCompare(db);
+    });
+  }, [masterUpacaraList]);
+
   const handleExportExcel = () => {
     try {
       setIsExporting(true);
@@ -522,6 +546,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
         mainReportTab,
         ceremonyList,
         monthList: BULAN_LIST,
+        masterUpacaraList: sortedMasterUpacara,
         formatJamAbsen,
         formatJamMasuk,
         monthName,
@@ -929,24 +954,57 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                   <th style={{ minWidth: '160px', padding: '12px' }}>FAKULTAS &amp; PRODI</th>
                   <th style={{ width: '85px', padding: '12px', textAlign: 'center', color: '#d97706' }}>TOTAL HADIR</th>
 
-                  {BULAN_LIST.map((b) => (
-                    <th key={b.value} style={{ width: '60px', padding: '12px', textAlign: 'center' }}>
-                      <div style={{ fontWeight: 800 }}>{b.value}</div>
-                      <div style={{ fontSize: '0.68rem', color: '#6b7280' }}>{b.short}</div>
+                  {sortedMasterUpacara.length > 0 ? (
+                    sortedMasterUpacara.map((upacara) => {
+                      const dStr = String(upacara.tanggal || '').substring(0, 10);
+                      const formattedDate = dStr ? formatIndonesianDate(dStr) : '-';
+
+                      return (
+                        <th
+                          key={upacara.id || dStr}
+                          style={{
+                            minWidth: '130px',
+                            maxWidth: '180px',
+                            padding: '10px 12px',
+                            textAlign: 'center',
+                            verticalAlign: 'middle',
+                          }}
+                          title={`${upacara.nama} (${formattedDate})`}
+                        >
+                          <div
+                            style={{
+                              fontWeight: 800,
+                              color: '#1f2937',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {upacara.nama}
+                          </div>
+                          <div style={{ fontSize: '0.70rem', color: '#6b7280', marginTop: '2px', fontWeight: 500 }}>
+                            {formattedDate}
+                          </div>
+                        </th>
+                      );
+                    })
+                  ) : (
+                    <th style={{ minWidth: '200px', padding: '12px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}>
+                      Belum ada agenda upacara {selectedYear}
                     </th>
-                  ))}
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="17" style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                    <td colSpan={5 + Math.max(1, sortedMasterUpacara.length)} style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
                       Memuat matriks presensi upacara tahun {selectedYear}...
                     </td>
                   </tr>
                 ) : paginatedEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan="17" style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                    <td colSpan={5 + Math.max(1, sortedMasterUpacara.length)} style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
                       Tidak ada data presensi upacara pada kriteria filter terpilih.
                     </td>
                   </tr>
@@ -982,10 +1040,18 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
 
                       const cleanDate = String(c.tanggal || c.created_at || '').substring(0, 10);
                       const yr = parseInt(cleanDate.substring(0, 4), 10);
-                      return yr === Number(selectedYear);
+                      return !yr || yr === Number(selectedYear);
                     });
 
-                    const totalHadir = empCeremonies.length;
+                    const empRecordUpacaras = (item.records || []).filter((r) => r.type === 'upacara');
+
+                    const totalHadir = sortedMasterUpacara.length > 0
+                      ? sortedMasterUpacara.filter((upacara) => {
+                          const uDate = String(upacara.tanggal || '').substring(0, 10);
+                          return empCeremonies.some((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === uDate) ||
+                            empRecordUpacaras.some((r) => String(r.tanggal || '').substring(0, 10) === uDate);
+                        }).length
+                      : (empCeremonies.length || empRecordUpacaras.length);
 
                     return (
                       <tr key={item.kode || index} style={{ borderBottom: '1px solid #f3f4f6' }}>
@@ -1007,35 +1073,49 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                           </span>
                         </td>
 
-                        {BULAN_LIST.map((b) => {
-                          const monthCeremonies = empCeremonies.filter((c) => {
-                            const cleanDate = String(c.tanggal || c.created_at || '').substring(0, 10);
-                            const m = parseInt(cleanDate.substring(5, 7), 10);
-                            return m === b.value;
-                          });
+                        {sortedMasterUpacara.length > 0 ? (
+                          sortedMasterUpacara.map((upacara) => {
+                            const uDate = String(upacara.tanggal || '').substring(0, 10);
 
-                          const isAttended = monthCeremonies.length > 0;
-                          const firstRecord = monthCeremonies[0];
-                          const displayTime = isAttended ? (formatJamMasuk(firstRecord.created_at) || '07:00') : '-';
+                            const matchedRecord = empCeremonies.find((c) => {
+                              const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
+                              return cDate === uDate;
+                            }) || empRecordUpacaras.find((r) => {
+                              const rDate = String(r.tanggal || '').substring(0, 10);
+                              return rDate === uDate;
+                            });
 
-                          return (
-                            <td
-                              key={b.value}
-                              onClick={() => isAttended && handleCellClick(p, firstRecord.tanggal, firstRecord, true)}
-                              style={{
-                                textAlign: 'center',
-                                fontWeight: isAttended ? 800 : 400,
-                                fontSize: isAttended ? '0.75rem' : '0.8rem',
-                                color: isAttended ? '#15803d' : '#9ca3af',
-                                backgroundColor: isAttended ? '#dcfce7' : 'transparent',
-                                cursor: isAttended ? 'pointer' : 'default',
-                                padding: '6px 2px',
-                              }}
-                            >
-                              {displayTime}
-                            </td>
-                          );
-                        })}
+                            const isAttended = Boolean(matchedRecord);
+                            const displayTime = isAttended
+                              ? (formatJamMasuk(matchedRecord.created_at || matchedRecord.tanggal || matchedRecord.info?.masuk) || '07:00')
+                              : '-';
+
+                            return (
+                              <td
+                                key={upacara.id || uDate}
+                                onClick={() => isAttended && handleCellClick(p, uDate, { ...matchedRecord, upacaraNama: upacara.nama }, true)}
+                                style={{
+                                  textAlign: 'center',
+                                  fontWeight: isAttended ? 800 : 400,
+                                  fontSize: isAttended ? '0.75rem' : '0.8rem',
+                                  color: isAttended ? '#15803d' : '#9ca3af',
+                                  backgroundColor: isAttended ? '#dcfce7' : 'transparent',
+                                  cursor: isAttended ? 'pointer' : 'default',
+                                  padding: '8px 4px',
+                                  borderLeft: '1px solid #f1f5f9',
+                                  borderRight: '1px solid #f1f5f9',
+                                }}
+                                title={isAttended ? `${upacara.nama}: Hadir (${displayTime})` : `${upacara.nama}: Tidak Hadir`}
+                              >
+                                {displayTime}
+                              </td>
+                            );
+                          })
+                        ) : (
+                          <td style={{ textAlign: 'center', color: '#9ca3af', padding: '12px' }}>
+                            -
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -1078,6 +1158,13 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
 
             {selectedCell.record ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedCell.isUpacara && selectedCell.record?.upacaraNama && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#475569' }}>Agenda Upacara:</span>
+                    <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>{selectedCell.record.upacaraNama}</strong>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f3f4f6', borderRadius: '8px' }}>
                   <span style={{ fontSize: '0.85rem', color: '#4b5563' }}>Status Presensi:</span>
                   <strong style={{ textTransform: 'uppercase', fontSize: '0.85rem', color: '#10b981' }}>
