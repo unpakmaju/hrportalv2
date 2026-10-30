@@ -389,7 +389,7 @@ export const SlipGajiDosen = ({
           <tr>
             <td style={{ padding: '2px 6px', fontWeight: 'bold' }}>Astek/DPLK</td>
             <td>Rp.</td>
-            <td style={{ textAlign: 'right' }}>{formatRupiah(data.astekY ?? data.astek_dplk ?? 0)}</td>
+            <td style={{ textAlign: 'right' }}>{formatRupiah((data.astekY + data.dplkY) ?? 0)}</td>
             <td colSpan={2}></td>
           </tr>
           <tr style={{ borderBottom: '1.5px solid #000000' }}>
