@@ -6,13 +6,107 @@ const AuthContext = createContext(null);
 
 export const SSO_CONFIG = {
   authUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/auth',
-  tokenUrl: '/api/v2/sso/token',
-  logoutUrl: '/api/v2/sso/logout',
-  userInfoUrl: '/api/v2/sso/userinfo',
+  tokenUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/token',
+  tokenUrlFallback: '/api/v2/sso/token',
+  logoutUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/logout',
+  logoutUrlFallback: '/api/v2/sso/logout',
+  userInfoUrl: 'https://gerbang.unpak.ac.id/realms/gateway/protocol/openid-connect/userinfo',
+  userInfoUrlFallback: '/api/v2/sso/userinfo',
   clientId: 'hrportal',
   get redirectUri() {
     return `${window.location.origin}/login`;
   },
+};
+
+// Resilient Multi-Tier Token Requester:
+// 1. Coba langsung ke Keycloak gerbang.unpak.ac.id (klien sudah memiliki sesi & cf_clearance dari halaman login)
+// 2. Fallback otomatis ke proxy lokal /api/v2/sso/token & /api/sso/token jika terjadi kendala jaringan/CORS
+export const requestSsoToken = async (bodyParams) => {
+  const candidateUrls = [
+    SSO_CONFIG.tokenUrl,
+    SSO_CONFIG.tokenUrlFallback,
+    '/api/sso/token',
+  ];
+
+  let lastError = null;
+
+  for (const url of candidateUrls) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json, text/plain, */*',
+        },
+        credentials: 'include',
+        body: bodyParams.toString(),
+      });
+
+      if (!response.ok) {
+        let cleanErr = '';
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const errJson = await response.json();
+          cleanErr = errJson.error_description || errJson.error || JSON.stringify(errJson);
+          if (cleanErr.includes('Code not valid') || cleanErr.includes('invalid_grant')) {
+            throw new Error(`Sesi kode SSO tidak valid atau sudah kedaluwarsa (${cleanErr})`);
+          }
+          lastError = new Error(`Keycloak error (${response.status}): ${cleanErr}`);
+          continue;
+        } else {
+          const raw = await response.text();
+          if (raw.includes('<title>')) {
+            const match = raw.match(/<title>([^<]+)<\/title>/i);
+            cleanErr = match ? match[1].trim() : `Server Error (${response.status})`;
+          } else {
+            cleanErr = raw.substring(0, 120) || `HTTP ${response.status}`;
+          }
+          lastError = new Error(`SSO Exchange Gagal (${response.status}): ${cleanErr}`);
+          console.warn(`SSO token endpoint ${url} gagal (${response.status}), mencoba endpoint fallback...`);
+          continue;
+        }
+      }
+
+      const tokenData = await response.json();
+      return tokenData;
+    } catch (err) {
+      if (err.message && err.message.includes('Sesi kode SSO tidak valid')) {
+        throw err;
+      }
+      console.warn(`Error token request ke ${url}:`, err);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Gagal terhubung ke layanan autentikasi SSO Keycloak.');
+};
+
+export const fetchUserInfo = async (token) => {
+  const candidateUrls = [
+    SSO_CONFIG.userInfoUrl,
+    SSO_CONFIG.userInfoUrlFallback,
+    '/api/sso/userinfo',
+  ];
+  for (const u of candidateUrls) {
+    try {
+      const res = await fetch(u, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json, text/plain, */*',
+        },
+        credentials: 'include',
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 401 || res.status === 403) {
+        return { unauthorized: true, status: res.status };
+      }
+    } catch (e) {
+      console.warn(`Userinfo request ke ${u} gagal, mencoba fallback...`, e);
+    }
+  }
+  return null;
 };
 
 // --- DEFINISI GROUP RESMI KEPEGAWAIAN UNPAK ---
@@ -232,16 +326,26 @@ export const AuthProvider = ({ children }) => {
     try {
       const refreshToken = localStorage.getItem('refresh') || localStorage.getItem('refresh_token');
       if (refreshToken) {
-        await fetch(SSO_CONFIG.logoutUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            client_id: SSO_CONFIG.clientId,
-            refresh_token: refreshToken,
-          }),
+        const logoutBody = new URLSearchParams({
+          client_id: SSO_CONFIG.clientId,
+          refresh_token: refreshToken,
         });
+        const candidateLogout = [
+          SSO_CONFIG.logoutUrl,
+          SSO_CONFIG.logoutUrlFallback,
+          '/api/sso/logout'
+        ];
+        for (const u of candidateLogout) {
+          try {
+            await fetch(u, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              credentials: 'include',
+              body: logoutBody.toString(),
+            });
+            break;
+          } catch (e) {}
+        }
       }
     } catch (e) {
       console.warn('Keycloak POST logout note:', e);
@@ -275,19 +379,7 @@ export const AuthProvider = ({ children }) => {
         refresh_token: refreshToken,
       });
 
-      const response = await fetch(SSO_CONFIG.tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Refresh token Gagal (${response.status})`);
-      }
-
-      const tokenData = await response.json();
+      const tokenData = await requestSsoToken(body);
       const newAccessToken = tokenData.access_token;
       const newRefreshToken = tokenData.refresh_token || refreshToken;
       const newIdToken = tokenData.id_token || localStorage.getItem('id_token') || '';
@@ -369,12 +461,9 @@ export const AuthProvider = ({ children }) => {
 
           // 2. Real-time Token Introspection & Auto Group Sync ke Keycloak Setiap Refresh Halaman
           try {
-            const introRes = await fetch(SSO_CONFIG.userInfoUrl, {
-              headers: { Authorization: `Bearer ${activeToken}` },
-            });
+            const liveUserInfo = await fetchUserInfo(activeToken);
 
-            if (introRes.ok) {
-              const liveUserInfo = await introRes.json();
+            if (liveUserInfo && !liveUserInfo.unauthorized) {
               const liveRawGroups = liveUserInfo.groups || liveUserInfo.group || [];
               const liveGroups = Array.isArray(liveRawGroups)
                 ? liveRawGroups
@@ -416,15 +505,13 @@ export const AuthProvider = ({ children }) => {
                   console.warn('Background token refresh note:', e);
                 }
               }
-            } else if (introRes.status === 401 || introRes.status === 403) {
-              console.warn(`Keycloak userinfo invalid (${introRes.status}), mencoba refresh token...`);
+            } else if (liveUserInfo && liveUserInfo.unauthorized) {
+              console.warn(`Keycloak userinfo unauthorized (${liveUserInfo.status}), mencoba refresh token...`);
               if (refreshToken) {
                 const retryRefresh = await refreshAccessToken();
                 if (retryRefresh.success && retryRefresh.accessToken) {
-                  const retryIntro = await fetch(SSO_CONFIG.userInfoUrl, {
-                    headers: { Authorization: `Bearer ${retryRefresh.accessToken}` },
-                  });
-                  if (!retryIntro.ok) {
+                  const retryInfo = await fetchUserInfo(retryRefresh.accessToken);
+                  if (!retryInfo || retryInfo.unauthorized) {
                     console.warn('Sesi Keycloak telah berakhir. Menghancurkan sesi lokal...');
                     setUser(null);
                     setToken('');
@@ -448,7 +535,7 @@ export const AuthProvider = ({ children }) => {
                 return;
               }
             } else {
-              console.warn(`Keycloak userinfo non-auth status (${introRes.status}), mempertahankan sesi aktif.`);
+              console.warn('Keycloak userinfo status non-auth / network issue, mempertahankan sesi aktif.');
             }
           } catch (netErr) {
             console.warn('Network issue during Keycloak userinfo verification:', netErr);
@@ -577,37 +664,7 @@ export const AuthProvider = ({ children }) => {
         redirect_uri: redirectUri,
       });
 
-      const response = await fetch(SSO_CONFIG.tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-      });
-
-      if (!response.ok) {
-        let cleanErr = '';
-        try {
-          const contentType = response.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const errJson = await response.json();
-            cleanErr = errJson.error_description || errJson.error || JSON.stringify(errJson);
-          } else {
-            const raw = await response.text();
-            if (raw.includes('<title>')) {
-              const match = raw.match(/<title>([^<]+)<\/title>/i);
-              cleanErr = match ? match[1].trim() : `Server Error (${response.status})`;
-            } else {
-              cleanErr = raw.substring(0, 150) || `HTTP ${response.status}`;
-            }
-          }
-        } catch {
-          cleanErr = `HTTP ${response.status}`;
-        }
-        throw new Error(`SSO Exchange Gagal (${response.status}): ${cleanErr}`);
-      }
-
-      const tokenData = await response.json();
+      const tokenData = await requestSsoToken(body);
       const accessToken = tokenData.access_token;
       const refreshToken = tokenData.refresh_token || '';
       const idToken = tokenData.id_token || '';

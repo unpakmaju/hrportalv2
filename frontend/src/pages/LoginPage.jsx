@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Building2, 
-  ShieldCheck, 
-  AlertCircle,
-  Globe,
-  Lock,
-  ArrowRight,
-  Sparkles
+  ShieldAlert, 
+  RefreshCw, 
+  ExternalLink,
+  ShieldCheck,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
@@ -15,9 +13,11 @@ export const LoginPage = () => {
   const { exchangeSsoCode, loginWithSsoToken, triggerSsoRedirect, isAuthenticated } = useAuth();
   const { showToast } = useToast();
 
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('initializing'); // 'redirecting' | 'processing' | 'success' | 'error'
+  const [statusText, setStatusText] = useState('Menghubungkan ke SSO UNPAK...');
   const [errorMessage, setErrorMessage] = useState('');
-  const hasExchangedRef = React.useRef(false);
+  const [countdown, setCountdown] = useState(5);
+  const hasExchangedRef = useRef(false);
 
   useEffect(() => {
     const handleSsoCallback = async () => {
@@ -30,6 +30,7 @@ export const LoginPage = () => {
       const errorParam = params.get('error') || params.get('error_description');
 
       if (errorParam) {
+        setStatus('error');
         setErrorMessage(errorParam);
         showToast(errorParam, 'error');
         return;
@@ -39,33 +40,42 @@ export const LoginPage = () => {
         hasExchangedRef.current = true;
         window.history.replaceState({}, document.title, window.location.pathname);
 
-        setLoading(true);
+        setStatus('processing');
+        setStatusText('Memverifikasi autentikasi SSO Universitas Pakuan...');
         setErrorMessage('');
-        // showToast('Memproses autentikasi Unpak SSO Keycloak...', 'info');
+
         const res = await exchangeSsoCode(code);
         if (res.success) {
-          // showToast(`Selamat datang, ${res.user.name}!`, 'success');
-          window.history.pushState(null, '', '/dashboard');
+          setStatus('success');
+          setStatusText(`Selamat datang, ${res.user?.name || 'Pengguna'}! Mengalihkan ke Dashboard...`);
+          setTimeout(() => {
+            window.history.pushState(null, '', '/dashboard');
+          }, 300);
         } else {
-          setErrorMessage(res.error || 'Gagal login via Unpak SSO');
+          setStatus('error');
+          setErrorMessage(res.error || 'Gagal menyelesaikan pertukaran sesi SSO.');
           showToast(res.error || 'Gagal login via Unpak SSO', 'error');
         }
-        setLoading(false);
       } else if (accessToken && !hasExchangedRef.current) {
         hasExchangedRef.current = true;
         window.history.replaceState({}, document.title, window.location.pathname);
 
-        setLoading(true);
+        setStatus('processing');
+        setStatusText('Menyiapkan sesi pengguna...');
         setErrorMessage('');
+
         const res = loginWithSsoToken(accessToken, idToken);
         if (res.success) {
-          showToast('Login dengan Unpak SSO berhasil!', 'success');
-          window.history.pushState(null, '', '/dashboard');
+          setStatus('success');
+          setStatusText('Autentikasi SSO berhasil! Mengalihkan...');
+          setTimeout(() => {
+            window.history.pushState(null, '', '/dashboard');
+          }, 300);
         } else {
-          setErrorMessage(res.error || 'Gagal login via SSO');
+          setStatus('error');
+          setErrorMessage(res.error || 'Gagal login via SSO.');
           showToast(res.error || 'Gagal login via SSO', 'error');
         }
-        setLoading(false);
       } else if (!code && !accessToken && !hasExchangedRef.current) {
         if (isAuthenticated) {
           window.history.pushState(null, '', '/dashboard');
@@ -77,151 +87,268 @@ export const LoginPage = () => {
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        // Direct auto-redirect to Keycloak gerbang.unpak.ac.id without waiting for click
         hasExchangedRef.current = true;
-        setLoading(true);
-        triggerSsoRedirect(isLoggedOut);
+        setStatus('redirecting');
+        setStatusText('Mengalihkan ke SSO Gerbang Universitas Pakuan...');
+        
+        // Auto-redirect directly to Keycloak SSO
+        setTimeout(() => {
+          triggerSsoRedirect(isLoggedOut);
+        }, 150);
       }
     };
 
     handleSsoCallback();
   }, [isAuthenticated]);
 
+  // Auto-redirect countdown on error
+  useEffect(() => {
+    let timer;
+    if (status === 'error' && countdown > 0) {
+      timer = setTimeout(() => {
+        setCountdown((c) => c - 1);
+      }, 1000);
+    } else if (status === 'error' && countdown === 0) {
+      triggerSsoRedirect(true);
+    }
+    return () => clearTimeout(timer);
+  }, [status, countdown]);
+
+  // ERROR STATE: Clean error alert modal with auto-retry
+  if (status === 'error') {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          backgroundColor: '#f8fafc',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          fontFamily: 'Plus Jakarta Sans, system-ui, sans-serif',
+        }}
+      >
+        <div
+          className="animate-fade-in"
+          style={{
+            width: '100%',
+            maxWidth: '440px',
+            padding: '36px 32px',
+            borderRadius: '24px',
+            backgroundColor: '#ffffff',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)',
+            textAlign: 'center',
+          }}
+        >
+          {/* Alert Icon Badge */}
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '20px',
+              backgroundColor: '#fef2f2',
+              color: '#ef4444',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '20px',
+              border: '1px solid #fee2e2',
+            }}
+          >
+            <ShieldAlert size={32} />
+          </div>
+
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+            Sesi Autentikasi Diperlukan
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
+            {errorMessage.includes('Security Check') || errorMessage.includes('403')
+              ? 'Verifikasi keamanan sesi memerlukan penyegaran. Silakan klik tombol di bawah untuk masuk kembali melalui SSO UNPAK.'
+              : errorMessage || 'Sesi login telah berakhir atau memerlukan otentikasi ulang melalui Gerbang SSO.'}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => triggerSsoRedirect(true)}
+            style={{
+              width: '100%',
+              padding: '14px 20px',
+              borderRadius: '12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              fontSize: '0.925rem',
+              fontWeight: 800,
+              color: '#ffffff',
+              border: 'none',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+              cursor: 'pointer',
+              marginBottom: '16px',
+            }}
+          >
+            <RefreshCw size={18} />
+            <span>Masuk Kembali ke SSO UNPAK ({countdown}s)</span>
+          </button>
+
+          <a
+            href="https://helpdesk.unpak.ac.id"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.8rem',
+              color: '#64748b',
+              textDecoration: 'none',
+              fontWeight: 600,
+            }}
+          >
+            <span>Butuh bantuan? Kunjungi Helpdesk UNPAK</span>
+            <ExternalLink size={13} />
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // DEFAULT / LOADING / REDIRECTING / PROCESSING / SUCCESS STATE
+  // Seamless clean full-screen loading state (No static login card)
   return (
     <div
       style={{
         minHeight: '100vh',
         backgroundColor: '#ffffff',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '24px',
         position: 'relative',
+        fontFamily: 'Plus Jakarta Sans, system-ui, sans-serif',
       }}
     >
-      {/* Top Right Language Selector */}
-      <div style={{ position: 'absolute', top: '24px', right: '32px' }}>
-        <button
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: '#ffffff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '6px',
-            padding: '6px 12px',
-            fontSize: '0.8rem',
-            fontWeight: 700,
-            color: '#111827',
-            cursor: 'pointer',
-          }}
-        >
-          <Globe size={14} color="#6b7280" />
-          <span>ID / EN</span>
-        </button>
-      </div>
-
-      {/* Centered SSO Only Auth Card */}
       <div
         className="animate-fade-in"
         style={{
-          width: '100%',
-          maxWidth: '420px',
-          padding: '36px 32px',
-          border: '1px solid #e5e7eb',
-          borderRadius: '20px',
-          backgroundColor: '#ffffff',
-          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          textAlign: 'center',
+          maxWidth: '460px',
+        }}
+      >
+        {/* Animated UNPAK Emblem Logo */}
+        <div style={{ position: 'relative', marginBottom: '28px' }}>
+          <div
+            style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: '24px',
+              backgroundColor: '#0f172a',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 900,
+              fontSize: '1.6rem',
+              letterSpacing: '-0.04em',
+              boxShadow: '0 10px 30px -5px rgba(15, 23, 42, 0.25)',
+            }}
+          >
+            UNPAK
+          </div>
+
+          {/* Smooth Spinning Gradient Ring */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: '-8px',
+              borderRadius: '32px',
+              border: '3px solid transparent',
+              borderTopColor: '#10b981',
+              borderRightColor: '#059669',
+              animation: 'spin 1.2s linear infinite',
+            }}
+          />
+        </div>
+
+        <h1
+          style={{
+            fontSize: '1.6rem',
+            fontWeight: 800,
+            color: '#0f172a',
+            marginBottom: '6px',
+            letterSpacing: '-0.02em',
+          }}
+        >
+          HR Portal UNPAK
+        </h1>
+
+        <p
+          style={{
+            fontSize: '0.875rem',
+            color: '#64748b',
+            marginBottom: '24px',
+          }}
+        >
+          Sistem Informasi Manajemen Kepegawaian (SIMPEG)
+        </p>
+
+        {/* Dynamic Status Indicator */}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            color: '#065f46',
+            padding: '8px 18px',
+            borderRadius: '9999px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+          }}
+        >
+          <div
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#10b981',
+              animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            }}
+          />
+          <span>{statusText}</span>
+        </div>
+      </div>
+
+      {/* Subtle Footer */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: '24px',
+          fontSize: '0.75rem',
+          color: '#94a3b8',
           textAlign: 'center',
         }}
       >
-        {/* Centered HR Portal Badge Logo */}
-        <div
-          style={{
-            width: '56px',
-            height: '56px',
-            borderRadius: '14px',
-            backgroundColor: '#111827',
-            color: '#ffffff',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 800,
-            fontSize: '1.25rem',
-            letterSpacing: '-0.03em',
-            marginBottom: '20px',
-            boxShadow: '0 4px 12px rgba(17, 24, 39, 0.15)',
-          }}
-        >
-          UNPAK
-        </div>
-
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', marginBottom: '6px' }}>
-          HR Portal UNPAK
-        </h1>
-        <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '28px', lineHeight: 1.5 }}>
-          Layanan Autentikasi Tunggal Single Sign-On (SSO) Pegawai &amp; Dosen Universitas Pakuan.
-        </p>
-
-        {/* Error Alert */}
-        {errorMessage && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '10px',
-              padding: '12px 14px',
-              borderRadius: '10px',
-              backgroundColor: '#fef2f2',
-              border: '1px solid #fecaca',
-              color: '#dc2626',
-              fontSize: '0.825rem',
-              marginBottom: '20px',
-              textAlign: 'left',
-            }}
-          >
-            <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div>{errorMessage}</div>
-          </div>
-        )}
-
-        {/* EXCLUSIVE UNPAK SSO LOGIN BUTTON ONLY (NO FORM, NO REGIS, NO FORGET PASSWORD) */}
-        <button
-          type="button"
-          onClick={triggerSsoRedirect}
-          disabled={loading}
-          className="bm-btn-emerald"
-          style={{
-            width: '100%',
-            padding: '14px 20px',
-            borderRadius: '12px',
-            justifyContent: 'center',
-            fontSize: '0.925rem',
-            fontWeight: 800,
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
-            marginBottom: '20px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-            <path fill="#ffffff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#ffffff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#ffffff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-            <path fill="#ffffff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-          </svg>
-          <span>{loading ? 'Memproses SSO...' : 'Masuk dengan UNPAK SSO'}</span>
-        </button>
-
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.775rem', color: '#059669', background: '#ecfdf5', padding: '6px 12px', borderRadius: '9999px', fontWeight: 700 }}>
-          <ShieldCheck size={14} color="#10b981" />
-          <span>Terintegrasi dengan SSO UNPAK</span>
-        </div>
-
-        <div style={{ marginTop: '28px', paddingTop: '16px', borderTop: '1px solid #e5e7eb', fontSize: '0.725rem', color: '#9ca3af' }}>
-          Autentikasi resmi Universitas Pakuan &bull; Sistem Informasi Manajemen Kepegawaian (SIMPEG).
-        </div>
+        Universitas Pakuan &bull; Autentikasi Tunggal Single Sign-On (SSO)
       </div>
+
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.3; transform: scale(1.2); }
+        }
+      `}</style>
     </div>
   );
 };
