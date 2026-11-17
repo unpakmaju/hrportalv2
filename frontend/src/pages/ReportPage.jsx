@@ -1181,6 +1181,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                           }
 
                           const isAttended = Boolean(matchedRecord);
+                          console.log(matchedRecord)
                           const displayTime = isAttended
                             ? (
                                 formatJamMasuk(matchedRecord.info?.tanggal) ||
