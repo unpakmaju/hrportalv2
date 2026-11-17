@@ -17,6 +17,7 @@ import (
 	"hrportal_backend/modules/report/domain"
 	sppdDomain "hrportal_backend/modules/sppd/domain"
 
+	"github.com/goforj/godump"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -1246,6 +1247,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 				"jam":        jamStr,
 			},
 		}
+		godump.Dump(u)
 		addRecord(u.Nip, u.Nidn, rec)
 	}
 
