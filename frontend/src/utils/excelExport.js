@@ -414,7 +414,7 @@ function parseDateParts(str) {
  * Helper to extract display time (HH:mm) for ceremony attendance
  */
 function extractCeremonyTime(record) {
-  if (!record) return '07:00';
+  if (!record) return '-';
   const candidates = [
     record.info?.tanggal,
     record.created_at,
@@ -423,23 +423,29 @@ function extractCeremonyTime(record) {
     record.info?.jam,
     record.jam_masuk,
     record.jam,
+    record.tanggal,
   ];
   for (const c of candidates) {
     if (!c || typeof c !== 'string') continue;
-    if (c.includes(' ')) {
-      const p = c.split(' ')[1];
-      if (p && p.length >= 5 && /^\d{2}:\d{2}/.test(p)) return p.substring(0, 5);
+    const s = c.trim();
+    if (s.includes(' ')) {
+      const p = s.split(' ')[1];
+      if (p && p.length >= 5 && /^\d{2}:\d{2}/.test(p)) {
+        if (p.startsWith('00:00')) continue;
+        return p.substring(0, 5);
+      }
     }
-    if (c.includes('T')) {
-      const p = c.split('T')[1];
+    if (s.includes('T')) {
+      const p = s.split('T')[1];
       if (p && p.startsWith('00:00')) continue;
       if (p && p.length >= 5 && /^\d{2}:\d{2}/.test(p)) return p.substring(0, 5);
     }
-    if (/^\d{2}:\d{2}/.test(c)) {
-      return c.substring(0, 5);
+    if (/^\d{2}:\d{2}/.test(s)) {
+      if (s.startsWith('00:00')) continue;
+      return s.substring(0, 5);
     }
   }
-  return '07:00';
+  return 'Hadir';
 }
 
 /**
@@ -645,14 +651,17 @@ export function exportLaporanPresensiXlsx({
           matched = {
             ...(rItem || {}),
             ...(cItem || {}),
-            created_at: cItem?.created_at || rItem?.created_at,
+            created_at: cItem?.created_at || rItem?.created_at || rItem?.info?.created_at,
             info: {
               ...(rItem?.info || {}),
               ...(cItem?.info || {}),
-              tanggal: (cItem?.created_at ? String(cItem.created_at).substring(0, 19) : null) ||
-                       (rItem?.info?.tanggal && !rItem.info.tanggal.includes('00:00:00') ? rItem.info.tanggal : null) ||
+              tanggal: (rItem?.info?.tanggal && !rItem.info.tanggal.includes('00:00:00') ? rItem.info.tanggal : null) ||
+                       (cItem?.created_at ? String(cItem.created_at).substring(0, 19) : null) ||
                        rItem?.info?.tanggal ||
                        cItem?.tanggal,
+              created_at: cItem?.created_at || rItem?.created_at || rItem?.info?.created_at,
+              masuk: rItem?.info?.masuk || cItem?.created_at || rItem?.created_at,
+              jam: rItem?.info?.jam,
             },
           };
         }
@@ -675,14 +684,17 @@ export function exportLaporanPresensiXlsx({
             matched = {
               ...(rFallback || {}),
               ...(cFallback || {}),
-              created_at: cFallback?.created_at || rFallback?.created_at,
+              created_at: cFallback?.created_at || rFallback?.created_at || rFallback?.info?.created_at,
               info: {
                 ...(rFallback?.info || {}),
                 ...(cFallback?.info || {}),
-                tanggal: (cFallback?.created_at ? String(cFallback.created_at).substring(0, 19) : null) ||
-                         (rFallback?.info?.tanggal && !rFallback.info.tanggal.includes('00:00:00') ? rFallback.info.tanggal : null) ||
+                tanggal: (rFallback?.info?.tanggal && !rFallback.info.tanggal.includes('00:00:00') ? rFallback.info.tanggal : null) ||
+                         (cFallback?.created_at ? String(cFallback.created_at).substring(0, 19) : null) ||
                          rFallback?.info?.tanggal ||
                          cFallback?.tanggal,
+                created_at: cFallback?.created_at || rFallback?.created_at || rFallback?.info?.created_at,
+                masuk: rFallback?.info?.masuk || cFallback?.created_at || rFallback?.created_at,
+                jam: rFallback?.info?.jam,
               },
             };
           }

@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"strings"
@@ -19,6 +20,19 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+type rawUpacaraRecord struct {
+	ID           uint           `gorm:"column:id"`
+	Nidn         string         `gorm:"column:nidn"`
+	Nip          string         `gorm:"column:nip"`
+	Nama         string         `gorm:"column:nama"`
+	Unit         string         `gorm:"column:unit"`
+	Fakultas     string         `gorm:"column:fakultas"`
+	Prodi        string         `gorm:"column:prodi"`
+	Tanggal      string         `gorm:"column:tanggal"`
+	CreatedAt    *time.Time     `gorm:"column:created_at"`
+	CreatedAtRaw sql.NullString `gorm:"column:created_at_raw"`
+}
 
 type ReportRepository struct {
 	db          *gorm.DB
@@ -855,7 +869,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 		cutis        []leaveDomain.Cuti
 		sppds        []sppdDomain.Sppd
 		sppdAnggotas []sppdDomain.SppdAnggota
-		upacaras     []attendanceDomain.AbsenUpacara
+		upacaras     []rawUpacaraRecord
 	)
 
 	wg.Add(6)
@@ -958,7 +972,8 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 		if db == nil {
 			return
 		}
-		qu := db.WithContext(ctx).Model(&attendanceDomain.AbsenUpacara{}).
+		qu := db.WithContext(ctx).Table("absen_upacara").
+			Select("id, nidn, nip, nama, unit, fakultas, prodi, tanggal, created_at, CAST(created_at AS CHAR) AS created_at_raw").
 			Where("tanggal >= ? AND tanggal <= ?", tanggalMulai, tanggalAkhir)
 		if cleanFilterNip != "" && cleanFilterNidn != "" {
 			qu = qu.Where("(nip = ? OR nidn = ?)", cleanFilterNip, cleanFilterNidn)
@@ -1176,23 +1191,49 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 	}
 
 	for _, u := range upacaras {
+		rawCreated := ""
+		if u.CreatedAtRaw.Valid && strings.TrimSpace(u.CreatedAtRaw.String) != "" {
+			rawCreated = strings.TrimSpace(u.CreatedAtRaw.String)
+		} else if u.CreatedAt != nil {
+			tLocal := u.CreatedAt.In(time.Local)
+			rawCreated = tLocal.Format("2006-01-02 15:04:05")
+			if tLocal.Nanosecond() != 0 {
+				rawCreated = strings.TrimRight(strings.TrimRight(tLocal.Format("2006-01-02 15:04:05.000"), "0"), ".")
+			}
+		}
+
+		cleanTgl := cleanDate(u.Tanggal)
+
 		var infoTanggal string
 		var createdAtStr, masukStr, jamStr *string
-		if u.CreatedAt != nil {
-			tLocal := u.CreatedAt.In(time.Local)
-			infoTanggal = tLocal.Format("2006-01-02T15:04:05")
-			s := tLocal.Format("2006-01-02 15:04:05")
-			if tLocal.Nanosecond() != 0 {
-				s = strings.TrimRight(strings.TrimRight(tLocal.Format("2006-01-02 15:04:05.000"), "0"), ".")
+		if rawCreated != "" {
+			createdAtStr = &rawCreated
+			masukStr = &rawCreated
+
+			parts := strings.Split(rawCreated, " ")
+			datePart := cleanTgl
+			if len(parts) > 0 && parts[0] != "" {
+				datePart = parts[0]
 			}
-			createdAtStr = &s
-			m := tLocal.Format("2006-01-02 15:04:05")
-			masukStr = &m
-			j := tLocal.Format("15:04:05")
-			jamStr = &j
+			timePart := ""
+			if len(parts) > 1 {
+				timePart = parts[1]
+			}
+			jamOnly := timePart
+			if idx := strings.Index(jamOnly, "."); idx != -1 {
+				jamOnly = jamOnly[:idx]
+			}
+			jamStr = &jamOnly
+
+			if len(jamOnly) >= 8 {
+				infoTanggal = fmt.Sprintf("%sT%s", datePart, jamOnly[:8])
+			} else {
+				infoTanggal = rawCreated
+			}
 		} else {
 			infoTanggal = u.Tanggal
 		}
+
 		rec := domain.RecordItem{
 			ID:        u.ID,
 			Tanggal:   u.Tanggal,

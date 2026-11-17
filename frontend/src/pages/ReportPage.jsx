@@ -45,17 +45,23 @@ const TAHUN_LIST = Array.from({ length: Math.max(1, currentYearNum - 2000 + 1) }
 
 const formatJamMasuk = (str) => {
   if (!str) return '';
-  if (str.includes(' ')) {
-    const timePart = str.split(' ')[1];
-    if (timePart && timePart.length >= 5 && /^\d{2}:\d{2}/.test(timePart)) return timePart.substring(0, 5);
+  if (typeof str !== 'string') return '';
+  const s = str.trim();
+  if (s.includes(' ')) {
+    const timePart = s.split(' ')[1];
+    if (timePart && timePart.length >= 5 && /^\d{2}:\d{2}/.test(timePart)) {
+      if (timePart.startsWith('00:00')) return '';
+      return timePart.substring(0, 5);
+    }
   }
-  if (str.includes('T')) {
-    const timePart = str.split('T')[1];
+  if (s.includes('T')) {
+    const timePart = s.split('T')[1];
     if (timePart.startsWith('00:00')) return '';
     if (timePart && timePart.length >= 5 && /^\d{2}:\d{2}/.test(timePart)) return timePart.substring(0, 5);
   }
-  if (/^\d{2}:\d{2}/.test(str)) {
-    return str.substring(0, 5);
+  if (/^\d{2}:\d{2}/.test(s)) {
+    if (s.startsWith('00:00')) return '';
+    return s.substring(0, 5);
   }
   return '';
 };
@@ -1173,16 +1179,18 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                               ...(ceremonyItem || {}),
                               id: recordItem?.id || ceremonyItem?.id,
                               tanggal: ceremonyItem?.tanggal || recordItem?.tanggal || colDate,
-                              created_at: ceremonyItem?.created_at || recordItem?.created_at,
+                              created_at: ceremonyItem?.created_at || recordItem?.created_at || recordItem?.info?.created_at,
                               info: {
                                 ...(recordItem?.info || {}),
                                 ...(ceremonyItem?.info || {}),
-                                tanggal: (ceremonyItem?.created_at ? String(ceremonyItem.created_at).substring(0, 19) : null) ||
-                                         (recordItem?.info?.tanggal && !recordItem.info.tanggal.includes('00:00:00') ? recordItem.info.tanggal : null) ||
+                                tanggal: (recordItem?.info?.tanggal && !recordItem.info.tanggal.includes('00:00:00') ? recordItem.info.tanggal : null) ||
+                                         (ceremonyItem?.created_at ? String(ceremonyItem.created_at).substring(0, 19) : null) ||
                                          recordItem?.info?.tanggal ||
                                          ceremonyItem?.tanggal ||
                                          colDate,
                                 created_at: ceremonyItem?.created_at || recordItem?.created_at || recordItem?.info?.created_at,
+                                masuk: recordItem?.info?.masuk || ceremonyItem?.created_at || recordItem?.created_at,
+                                jam: recordItem?.info?.jam,
                               },
                             };
                           }
@@ -1208,16 +1216,18 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                                 ...(cFallback || {}),
                                 id: rFallback?.id || cFallback?.id,
                                 tanggal: cFallback?.tanggal || rFallback?.tanggal || colDate,
-                                created_at: cFallback?.created_at || rFallback?.created_at,
+                                created_at: cFallback?.created_at || rFallback?.created_at || rFallback?.info?.created_at,
                                 info: {
                                   ...(rFallback?.info || {}),
                                   ...(cFallback?.info || {}),
-                                  tanggal: (cFallback?.created_at ? String(cFallback.created_at).substring(0, 19) : null) ||
-                                           (rFallback?.info?.tanggal && !rFallback.info.tanggal.includes('00:00:00') ? rFallback.info.tanggal : null) ||
+                                  tanggal: (rFallback?.info?.tanggal && !rFallback.info.tanggal.includes('00:00:00') ? rFallback.info.tanggal : null) ||
+                                           (cFallback?.created_at ? String(cFallback.created_at).substring(0, 19) : null) ||
                                            rFallback?.info?.tanggal ||
                                            cFallback?.tanggal ||
                                            colDate,
                                   created_at: cFallback?.created_at || rFallback?.created_at || rFallback?.info?.created_at,
+                                  masuk: rFallback?.info?.masuk || cFallback?.created_at || rFallback?.created_at,
+                                  jam: rFallback?.info?.jam,
                                 },
                               };
                             }
@@ -1231,11 +1241,10 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                                 formatJamMasuk(matchedRecord.info?.created_at) ||
                                 formatJamMasuk(matchedRecord.info?.masuk) ||
                                 formatJamMasuk(matchedRecord.info?.jam) ||
-                                formatJamMasuk(matchedRecord.tanggal) ||
-                                '08:00'
+                                formatJamMasuk(matchedRecord.tanggal)
                               )
                             : '';
-                          const displayTime = isAttended ? (scanTime || '08:00') : '-';
+                          const displayTime = isAttended ? (scanTime || 'Hadir') : '-';
 
                           return (
                             <td
