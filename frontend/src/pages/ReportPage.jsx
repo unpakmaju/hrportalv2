@@ -1172,7 +1172,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                             return cDate === colDate;
                           });
 
-                          console.log(colDate, recordItem)
+                          console.log(colDate, empRecordUpacaras)
 
                           let matchedRecord = null;
                           if (recordItem || ceremonyItem) {
