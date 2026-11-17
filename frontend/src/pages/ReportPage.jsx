@@ -1244,8 +1244,8 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                                 formatJamMasuk(matchedRecord.tanggal)
                               )
                             : '';
-                          console.log(matchedRecord, displayTime)
                           const displayTime = isAttended ? (scanTime || 'Hadir') : '-';
+                          console.log(matchedRecord, displayTime)
 
                           return (
                             <td
