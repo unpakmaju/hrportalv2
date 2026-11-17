@@ -1156,33 +1156,75 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                         {ceremonyColumns.map((col) => {
                           const colDate = col.tanggal;
 
-                          // 1. Exact date match (prioritizing empRecordUpacaras which has info.tanggal)
-                          let matchedRecord = empRecordUpacaras.find((r) => {
+                          // 1. Exact date match: find in both empRecordUpacaras and empCeremonies
+                          const recordItem = empRecordUpacaras.find((r) => {
                             const rDate = String(r.tanggal || r.info?.tanggal || '').substring(0, 10);
                             return rDate === colDate;
-                          }) || empCeremonies.find((c) => {
+                          });
+                          const ceremonyItem = empCeremonies.find((c) => {
                             const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
                             return cDate === colDate;
                           });
 
+                          let matchedRecord = null;
+                          if (recordItem || ceremonyItem) {
+                            matchedRecord = {
+                              ...(recordItem || {}),
+                              ...(ceremonyItem || {}),
+                              id: recordItem?.id || ceremonyItem?.id,
+                              tanggal: ceremonyItem?.tanggal || recordItem?.tanggal || colDate,
+                              created_at: ceremonyItem?.created_at || recordItem?.created_at,
+                              info: {
+                                ...(recordItem?.info || {}),
+                                ...(ceremonyItem?.info || {}),
+                                tanggal: (ceremonyItem?.created_at ? String(ceremonyItem.created_at).substring(0, 19) : null) ||
+                                         (recordItem?.info?.tanggal && !recordItem.info.tanggal.includes('00:00:00') ? recordItem.info.tanggal : null) ||
+                                         recordItem?.info?.tanggal ||
+                                         ceremonyItem?.tanggal ||
+                                         colDate,
+                                created_at: ceremonyItem?.created_at || recordItem?.created_at || recordItem?.info?.created_at,
+                              },
+                            };
+                          }
+
                           // 2. Fallback for routine 17-an column if attendance in that month was on adjacent date
                           if (!matchedRecord && col.isRoutine) {
-                            matchedRecord = empRecordUpacaras.find((r) => {
+                            const rFallback = empRecordUpacaras.find((r) => {
                               const rDate = String(r.tanggal || r.info?.tanggal || '').substring(0, 10);
                               const rMonth = parseInt(rDate.substring(5, 7), 10);
                               if (rMonth !== col.month) return false;
                               return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === rDate);
-                            }) || empCeremonies.find((c) => {
+                            });
+                            const cFallback = empCeremonies.find((c) => {
                               const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
                               const cMonth = parseInt(cDate.substring(5, 7), 10);
                               if (cMonth !== col.month) return false;
                               return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === cDate);
                             });
+
+                            if (rFallback || cFallback) {
+                              matchedRecord = {
+                                ...(rFallback || {}),
+                                ...(cFallback || {}),
+                                id: rFallback?.id || cFallback?.id,
+                                tanggal: cFallback?.tanggal || rFallback?.tanggal || colDate,
+                                created_at: cFallback?.created_at || rFallback?.created_at,
+                                info: {
+                                  ...(rFallback?.info || {}),
+                                  ...(cFallback?.info || {}),
+                                  tanggal: (cFallback?.created_at ? String(cFallback.created_at).substring(0, 19) : null) ||
+                                           (rFallback?.info?.tanggal && !rFallback.info.tanggal.includes('00:00:00') ? rFallback.info.tanggal : null) ||
+                                           rFallback?.info?.tanggal ||
+                                           cFallback?.tanggal ||
+                                           colDate,
+                                  created_at: cFallback?.created_at || rFallback?.created_at || rFallback?.info?.created_at,
+                                },
+                              };
+                            }
                           }
 
                           const isAttended = Boolean(matchedRecord);
-                          console.log(col, matchedRecord)
-                          const displayTime = isAttended
+                          const scanTime = isAttended
                             ? (
                                 formatJamMasuk(matchedRecord.info?.tanggal) ||
                                 formatJamMasuk(matchedRecord.created_at) ||
@@ -1190,9 +1232,10 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                                 formatJamMasuk(matchedRecord.info?.masuk) ||
                                 formatJamMasuk(matchedRecord.info?.jam) ||
                                 formatJamMasuk(matchedRecord.tanggal) ||
-                                '07:00'
+                                '08:00'
                               )
-                            : '-';
+                            : '';
+                          const displayTime = isAttended ? (scanTime || '08:00') : '-';
 
                           return (
                             <td

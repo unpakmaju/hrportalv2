@@ -637,21 +637,55 @@ export function exportLaporanPresensiXlsx({
 
       ceremonyCols.forEach((col) => {
         const colDate = col.tanggal;
-        let matched = empCeremonies.find((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === colDate) ||
-          empRecordUpacaras.find((r) => String(r.tanggal || '').substring(0, 10) === colDate);
+        const cItem = empCeremonies.find((c) => String(c.tanggal || c.created_at || '').substring(0, 10) === colDate);
+        const rItem = empRecordUpacaras.find((r) => String(r.tanggal || r.info?.tanggal || '').substring(0, 10) === colDate);
+
+        let matched = null;
+        if (cItem || rItem) {
+          matched = {
+            ...(rItem || {}),
+            ...(cItem || {}),
+            created_at: cItem?.created_at || rItem?.created_at,
+            info: {
+              ...(rItem?.info || {}),
+              ...(cItem?.info || {}),
+              tanggal: (cItem?.created_at ? String(cItem.created_at).substring(0, 19) : null) ||
+                       (rItem?.info?.tanggal && !rItem.info.tanggal.includes('00:00:00') ? rItem.info.tanggal : null) ||
+                       rItem?.info?.tanggal ||
+                       cItem?.tanggal,
+            },
+          };
+        }
 
         if (!matched && col.isRoutine) {
-          matched = empCeremonies.find((c) => {
+          const cFallback = empCeremonies.find((c) => {
             const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
             const cMonth = parseInt(cDate.substring(5, 7), 10);
             if (cMonth !== col.month) return false;
             return !ceremonyCols.some((other) => other.key !== col.key && other.tanggal === cDate);
-          }) || empRecordUpacaras.find((r) => {
-            const rDate = String(r.tanggal || '').substring(0, 10);
+          });
+          const rFallback = empRecordUpacaras.find((r) => {
+            const rDate = String(r.tanggal || r.info?.tanggal || '').substring(0, 10);
             const rMonth = parseInt(rDate.substring(5, 7), 10);
             if (rMonth !== col.month) return false;
             return !ceremonyCols.some((other) => other.key !== col.key && other.tanggal === rDate);
           });
+
+          if (cFallback || rFallback) {
+            matched = {
+              ...(rFallback || {}),
+              ...(cFallback || {}),
+              created_at: cFallback?.created_at || rFallback?.created_at,
+              info: {
+                ...(rFallback?.info || {}),
+                ...(cFallback?.info || {}),
+                tanggal: (cFallback?.created_at ? String(cFallback.created_at).substring(0, 19) : null) ||
+                         (rFallback?.info?.tanggal && !rFallback.info.tanggal.includes('00:00:00') ? rFallback.info.tanggal : null) ||
+                         rFallback?.info?.tanggal ||
+                         cFallback?.tanggal,
+              },
+            };
+          }
         }
 
         if (matched) {
