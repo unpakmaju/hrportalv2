@@ -17,7 +17,6 @@ import (
 	"hrportal_backend/modules/report/domain"
 	sppdDomain "hrportal_backend/modules/sppd/domain"
 
-	"github.com/goforj/godump"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -1191,7 +1190,6 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 		}
 	}
 
-	godump.Dump(upacaras)
 	for _, u := range upacaras {
 		rawCreated := ""
 		if u.CreatedAtRaw.Valid && strings.TrimSpace(u.CreatedAtRaw.String) != "" {

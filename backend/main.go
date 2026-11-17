@@ -112,12 +112,33 @@ func tryConnectDB(envVar string, dbName string) (*gorm.DB, error) {
 			}
 		}
 		candidates = append(candidates, dsnWithTimeout)
+		if strings.Contains(dsnWithTimeout, ":3306") {
+			candidates = append(candidates, strings.Replace(dsnWithTimeout, ":3306", ":3307", 1))
+		}
+		if strings.Contains(dsnWithTimeout, "unpak_hrportal?") || strings.Contains(dsnWithTimeout, "unpak_hrportal&") || strings.HasSuffix(dsnWithTimeout, "unpak_hrportal") {
+			candidates = append(candidates,
+				strings.Replace(dsnWithTimeout, "unpak_hrportal", "unpak_hrportal_server2", 1),
+				strings.Replace(strings.Replace(dsnWithTimeout, "unpak_hrportal", "unpak_hrportal_server2", 1), ":3306", ":3307", 1),
+			)
+		}
 	}
-	candidates = append(candidates,
-		fmt.Sprintf("root:@tcp(127.0.0.1:3306)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", dbName),
-		fmt.Sprintf("root:password@tcp(127.0.0.1:3306)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", dbName),
-		fmt.Sprintf("root:root@tcp(127.0.0.1:3306)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", dbName),
-	)
+
+	targetDBs := []string{dbName}
+	if dbName == "unpak_hrportal" {
+		targetDBs = append(targetDBs, "unpak_hrportal_server2", "unpak_hrportal_server")
+	}
+
+	for _, name := range targetDBs {
+		candidates = append(candidates,
+			fmt.Sprintf("root:@tcp(127.0.0.1:3307)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", name),
+			fmt.Sprintf("root:@tcp(127.0.0.1:3306)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", name),
+			fmt.Sprintf("root:password@tcp(127.0.0.1:3307)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", name),
+			fmt.Sprintf("root:password@tcp(127.0.0.1:3306)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", name),
+			fmt.Sprintf("root:root@tcp(127.0.0.1:3307)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", name),
+			fmt.Sprintf("root:root@tcp(127.0.0.1:3306)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", name),
+			fmt.Sprintf("root:@unix(/Applications/XAMPP/xamppfiles/var/mysql/mysql.sock)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=2s", name),
+		)
+	}
 
 	var lastErr error
 	for _, dsn := range candidates {

@@ -1245,7 +1245,6 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                               )
                             : '';
                           const displayTime = isAttended ? (scanTime || 'Hadir') : '-';
-                          console.log(matchedRecord, displayTime)
 
                           return (
                             <td

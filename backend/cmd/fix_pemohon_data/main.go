@@ -138,7 +138,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`
+	fmt.Print(`
 Usage:
   go run ./cmd/fix_pemohon_data [flags]
 
