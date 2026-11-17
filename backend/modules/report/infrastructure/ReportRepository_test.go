@@ -269,105 +269,27 @@ func TestIdentifierMatchingAndCrossRecordRetrieval(t *testing.T) {
 }
 
 func TestUpacaraRecordMappingAndCreatedAt(t *testing.T) {
-	cleanDate := func(dStr string) string {
-		clean := strings.TrimSpace(dStr)
-		if idx := strings.Index(clean, "T"); idx != -1 {
-			clean = clean[:idx]
-		}
-		if idx := strings.Index(clean, " "); idx != -1 {
-			clean = clean[:idx]
-		}
-		return clean
-	}
-
 	rawTanggal := "2026-10-28T00:00:00+07:00"
-	cleaned := cleanDate(rawTanggal)
-	if cleaned != "2026-10-28" {
-		t.Fatalf("Expected clean date '2026-10-28', got '%s'", cleaned)
-	}
-
-	createdAtTime, err := time.ParseInLocation("2006-01-02 15:04:05.999", "2026-10-28 08:00:19.991", time.Local)
-	if err != nil {
-		t.Fatalf("Failed to parse sample time: %v", err)
-	}
-
-	var createdAtStr, masukStr, jamStr *string
-	tLocal := createdAtTime.In(time.Local)
-	s := tLocal.Format("2006-01-02 15:04:05")
-	if tLocal.Nanosecond() != 0 {
-		s = strings.TrimRight(strings.TrimRight(tLocal.Format("2006-01-02 15:04:05.000"), "0"), ".")
-	}
-	createdAtStr = &s
-	m := tLocal.Format("2006-01-02 15:04:05")
-	masukStr = &m
-	j := tLocal.Format("15:04:05")
-	jamStr = &j
-
-	infoTanggal := tLocal.Format("2006-01-02T15:04:05")
+	createdStr := "2026-10-28T08:00:19.991+07:00"
 
 	rec := domain.RecordItem{
 		ID:        8,
 		Tanggal:   rawTanggal,
 		Type:      "upacara",
-		CreatedAt: createdAtStr,
+		CreatedAt: &createdStr,
 		Info: map[string]interface{}{
-			"tanggal":    infoTanggal,
-			"created_at": createdAtStr,
-			"masuk":      masukStr,
-			"jam":        jamStr,
+			"tanggal":    createdStr,
+			"created_at": createdStr,
 		},
 	}
 
 	if rec.Tanggal != "2026-10-28T00:00:00+07:00" {
 		t.Fatalf("Expected rec.Tanggal '2026-10-28T00:00:00+07:00', got '%s'", rec.Tanggal)
 	}
-	if rec.CreatedAt == nil || *rec.CreatedAt != "2026-10-28 08:00:19.991" {
-		val := "<nil>"
-		if rec.CreatedAt != nil {
-			val = *rec.CreatedAt
-		}
-		t.Fatalf("Expected rec.CreatedAt '2026-10-28 08:00:19.991', got '%s'", val)
+	if rec.CreatedAt == nil || *rec.CreatedAt != createdStr {
+		t.Fatalf("Expected rec.CreatedAt '%s', got '%v'", createdStr, rec.CreatedAt)
 	}
-	if rec.Info["tanggal"] != "2026-10-28T08:00:19" {
-		t.Fatalf("Expected rec.Info.tanggal '2026-10-28T08:00:19', got '%v'", rec.Info["tanggal"])
-	}
-	testCases := []struct {
-		id          uint
-		tanggal     string
-		rawCreated  string
-		expectedTgl string
-		expectedJam string
-	}{
-		{8, "2026-10-28", "2026-10-28 08:00:19.991", "2026-10-28T08:00:19", "08:00:19"},
-		{22, "2026-10-28", "2026-10-28 08:01:10.281", "2026-10-28T08:01:10", "08:01:10"},
-		{162, "2026-10-28", "2026-10-28 08:20:02.972", "2026-10-28T08:20:02", "08:20:02"},
-		{317, "2026-11-17", "2026-11-17 08:00:24.689", "2026-11-17T08:00:24", "08:00:24"},
-		{487, "2026-11-17", "2026-11-17 08:25:56.461", "2026-11-17T08:25:56", "08:25:56"},
-		{561, "2026-11-17", "2026-11-17 08:53:55.106", "2026-11-17T08:53:55", "08:53:55"},
-	}
-
-	for _, tc := range testCases {
-		cleanTgl := cleanDate(tc.tanggal)
-		parts := strings.Split(tc.rawCreated, " ")
-		datePart := cleanTgl
-		if len(parts) > 0 && parts[0] != "" {
-			datePart = parts[0]
-		}
-		timePart := ""
-		if len(parts) > 1 {
-			timePart = parts[1]
-		}
-		jamOnly := timePart
-		if idx := strings.Index(jamOnly, "."); idx != -1 {
-			jamOnly = jamOnly[:idx]
-		}
-		infoTgl := fmt.Sprintf("%sT%s", datePart, jamOnly[:8])
-
-		if infoTgl != tc.expectedTgl {
-			t.Fatalf("ID %d: expected info.tanggal '%s', got '%s'", tc.id, tc.expectedTgl, infoTgl)
-		}
-		if jamOnly != tc.expectedJam {
-			t.Fatalf("ID %d: expected info.jam '%s', got '%s'", tc.id, tc.expectedJam, jamOnly)
-		}
+	if rec.Info["tanggal"] != createdStr {
+		t.Fatalf("Expected rec.Info.tanggal '%s', got '%v'", createdStr, rec.Info["tanggal"])
 	}
 }

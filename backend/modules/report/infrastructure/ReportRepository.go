@@ -2,7 +2,6 @@ package infrastructure
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"strings"
@@ -17,22 +16,20 @@ import (
 	"hrportal_backend/modules/report/domain"
 	sppdDomain "hrportal_backend/modules/sppd/domain"
 
-	"github.com/goforj/godump"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type rawUpacaraRecord struct {
-	ID           uint           `gorm:"column:id"`
-	Nidn         string         `gorm:"column:nidn"`
-	Nip          string         `gorm:"column:nip"`
-	Nama         string         `gorm:"column:nama"`
-	Unit         string         `gorm:"column:unit"`
-	Fakultas     string         `gorm:"column:fakultas"`
-	Prodi        string         `gorm:"column:prodi"`
-	Tanggal      string         `gorm:"column:tanggal"`
-	CreatedAt    *time.Time     `gorm:"column:created_at"`
-	CreatedAtRaw sql.NullString `gorm:"column:created_at_raw"`
+	ID        uint   `gorm:"column:id"`
+	Nidn      string `gorm:"column:nidn"`
+	Nip       string `gorm:"column:nip"`
+	Nama      string `gorm:"column:nama"`
+	Unit      string `gorm:"column:unit"`
+	Fakultas  string `gorm:"column:fakultas"`
+	Prodi     string `gorm:"column:prodi"`
+	Tanggal   string `gorm:"column:tanggal"`
+	CreatedAt string `gorm:"column:created_at"`
 }
 
 type ReportRepository struct {
@@ -974,7 +971,6 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			return
 		}
 		qu := db.WithContext(ctx).Table("absen_upacara").
-			Select("id, nidn, nip, nama, unit, fakultas, prodi, tanggal, created_at, CAST(created_at AS CHAR) AS created_at_raw").
 			Where("tanggal >= ? AND tanggal <= ?", tanggalMulai, tanggalAkhir)
 		if cleanFilterNip != "" && cleanFilterNidn != "" {
 			qu = qu.Where("(nip = ? OR nidn = ?)", cleanFilterNip, cleanFilterNidn)
@@ -1192,62 +1188,17 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 	}
 
 	for _, u := range upacaras {
-		rawCreated := ""
-		if u.CreatedAtRaw.Valid && strings.TrimSpace(u.CreatedAtRaw.String) != "" {
-			rawCreated = strings.TrimSpace(u.CreatedAtRaw.String)
-		} else if u.CreatedAt != nil {
-			tLocal := u.CreatedAt.In(time.Local)
-			rawCreated = tLocal.Format("2006-01-02 15:04:05")
-			if tLocal.Nanosecond() != 0 {
-				rawCreated = strings.TrimRight(strings.TrimRight(tLocal.Format("2006-01-02 15:04:05.000"), "0"), ".")
-			}
-		}
-
-		cleanTgl := cleanDate(u.Tanggal)
-
-		var infoTanggal string
-		var createdAtStr, masukStr, jamStr *string
-		if rawCreated != "" {
-			createdAtStr = &rawCreated
-			masukStr = &rawCreated
-
-			parts := strings.Split(rawCreated, " ")
-			datePart := cleanTgl
-			if len(parts) > 0 && parts[0] != "" {
-				datePart = parts[0]
-			}
-			timePart := ""
-			if len(parts) > 1 {
-				timePart = parts[1]
-			}
-			jamOnly := timePart
-			if idx := strings.Index(jamOnly, "."); idx != -1 {
-				jamOnly = jamOnly[:idx]
-			}
-			jamStr = &jamOnly
-
-			if len(jamOnly) >= 8 {
-				infoTanggal = fmt.Sprintf("%sT%s", datePart, jamOnly[:8])
-			} else {
-				infoTanggal = rawCreated
-			}
-		} else {
-			infoTanggal = u.Tanggal
-		}
-
+		created := u.CreatedAt
 		rec := domain.RecordItem{
 			ID:        u.ID,
 			Tanggal:   u.Tanggal,
 			Type:      "upacara",
-			CreatedAt: createdAtStr,
+			CreatedAt: &created,
 			Info: map[string]interface{}{
-				"tanggal":    infoTanggal,
-				"created_at": createdAtStr,
-				"masuk":      masukStr,
-				"jam":        jamStr,
+				"tanggal":    created,
+				"created_at": created,
 			},
 		}
-		godump.Dump(u)
 		addRecord(u.Nip, u.Nidn, rec)
 	}
 
