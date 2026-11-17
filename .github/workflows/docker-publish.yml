@@ -1,0 +1,179 @@
+name: CI/CD - Build, Tag, and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Specific version tag to apply (e.g. v1.1.0). Leave blank to auto-bump patch.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  # ========================================================
+  # 1. VERSIONING & GIT TAGGING JOB
+  # Runs once on push to main to create and push the new git tag
+  # ========================================================
+  version-tag:
+    runs-on: ubuntu-latest
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    outputs:
+      new_tag: ${{ steps.version.outputs.NEW_TAG }}
+    steps:
+      # =========================
+      # CHECKOUT (FULL HISTORY FOR TAGS)
+      # =========================
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # =========================
+      # GET TAG
+      # =========================
+      - name: Get latest tag
+        id: tag
+        run: |
+          latest=$(git tag --sort=-v:refname | head -n 1)
+
+          if [ -z "$latest" ]; then
+            latest="v1.0.0"
+          fi
+
+          echo "LATEST=$latest" >> $GITHUB_OUTPUT
+
+      # =========================
+      # BUMP VERSION
+      # =========================
+      - name: Bump patch version
+        id: version
+        run: |
+          manual_version="${{ github.event.inputs.version }}"
+          if [ -n "$manual_version" ]; then
+            if [[ "$manual_version" != v* ]]; then
+              manual_version="v$manual_version"
+            fi
+            echo "NEW_TAG=$manual_version" >> $GITHUB_OUTPUT
+          else
+            tag=${{ steps.tag.outputs.LATEST }}
+            version=${tag#v}
+
+            IFS='.' read -r major minor patch <<< "$version"
+            patch=$((patch + 1))
+
+            new="v$major.$minor.$patch"
+
+            echo "NEW_TAG=$new" >> $GITHUB_OUTPUT
+          fi
+
+      # =========================
+      # CREATE TAG (SAFE)
+      # =========================
+      - name: Create Tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          new_tag="${{ steps.version.outputs.NEW_TAG }}"
+          echo "Tagging commit with $new_tag"
+          git tag "$new_tag"
+          git push origin "$new_tag"
+
+  # ========================================================
+  # 2. BUILD & PUSH DOCKER IMAGES (Matrix of Microservices)
+  # ========================================================
+  build-and-push:
+    needs: version-tag
+    if: always() && (needs.version-tag.result == 'success' || github.event_name == 'pull_request')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            image_suffix: hrportal-api
+            containerfile: Containerfile.api
+            alias_image: unpaksimonevv2_be
+          - name: notification-service
+            image_suffix: hrportal-service-notification
+            containerfile: Containerfile.notificationservice
+            alias_image: ''
+          - name: auto-verify-sdm
+            image_suffix: hrportal-job-autoverifysdm
+            containerfile: Containerfile.autoverifysdm
+            alias_image: ''
+          - name: holiday-sync
+            image_suffix: hrportal-job-holidaysync
+            containerfile: Containerfile.holidaysync
+            alias_image: ''
+          - name: export-worker
+            image_suffix: hrportal-job-exportworker
+            containerfile: Containerfile.exportworker
+            alias_image: ''
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # =========================
+      # SETUP BUILDX
+      # =========================
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # =========================
+      # DOCKER LOGIN (SAFE)
+      # =========================
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME || secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD || secrets.DOCKERHUB_TOKEN }}
+
+      # =========================
+      # DETERMINE TAGS
+      # =========================
+      - name: Determine Docker Tags
+        id: docker_tags
+        run: |
+          USER="${{ secrets.DOCKER_USERNAME || secrets.DOCKERHUB_USERNAME || 'adamilkom00' }}"
+          TAG="${{ needs.version-tag.outputs.new_tag || 'latest' }}"
+          IMAGE="${USER}/${{ matrix.image_suffix }}"
+
+          TAGS="${IMAGE}:${TAG},${IMAGE}:latest"
+
+          # Include alias image if defined (e.g. unpaksimonevv2_be)
+          if [ -n "${{ matrix.alias_image }}" ]; then
+            ALIAS="${USER}/${{ matrix.alias_image }}"
+            TAGS="${TAGS},${ALIAS}:${TAG},${ALIAS}:latest"
+          fi
+
+          echo "TAGS=${TAGS}" >> $GITHUB_OUTPUT
+
+      # =========================
+      # BUILD & PUSH (NO LEAK)
+      # =========================
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: backend
+          file: backend/${{ matrix.containerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
+          provenance: false   # 🔥 cegah metadata leak
+          sbom: false         # 🔥 cegah info dependency leak
+          tags: ${{ steps.docker_tags.outputs.TAGS }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

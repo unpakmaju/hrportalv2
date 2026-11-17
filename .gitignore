@@ -54,10 +54,13 @@ mariadb_data/
 mariadb/data
 mariadb/data/
 
-*.yml
-# Ignore compose and yaml files
+# Ignore compose and yaml files, but allow github workflows
 *.yml
 *.yaml
+!/.github/
+!/.github/workflows/
+!/.github/workflows/*.yml
+!/.github/workflows/*.yaml
 docker-compose.yml
 podman-compose.yml
 backend/docker-compose.yml
