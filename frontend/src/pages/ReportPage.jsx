@@ -1161,7 +1161,6 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
 
                         {ceremonyColumns.map((col) => {
                           const colDate = col.tanggal;
-                          console.log(col)
 
                           // 1. Exact date match: find in both empRecordUpacaras and empCeremonies
                           const recordItem = empRecordUpacaras.find((r) => {
@@ -1172,6 +1171,8 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                             const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
                             return cDate === colDate;
                           });
+
+                          console.log(colDate, empCeremonies)
 
                           let matchedRecord = null;
                           if (recordItem || ceremonyItem) {
