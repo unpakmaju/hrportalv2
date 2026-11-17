@@ -416,6 +416,7 @@ function parseDateParts(str) {
 function extractCeremonyTime(record) {
   if (!record) return '07:00';
   const candidates = [
+    record.info?.tanggal,
     record.created_at,
     record.info?.created_at,
     record.info?.masuk,
@@ -431,7 +432,7 @@ function extractCeremonyTime(record) {
     }
     if (c.includes('T')) {
       const p = c.split('T')[1];
-      if (p && p.startsWith('00:00')) return '07:00';
+      if (p && p.startsWith('00:00')) continue;
       if (p && p.length >= 5 && /^\d{2}:\d{2}/.test(p)) return p.substring(0, 5);
     }
     if (/^\d{2}:\d{2}/.test(c)) {

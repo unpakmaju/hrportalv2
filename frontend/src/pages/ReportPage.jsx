@@ -51,7 +51,7 @@ const formatJamMasuk = (str) => {
   }
   if (str.includes('T')) {
     const timePart = str.split('T')[1];
-    if (timePart.startsWith('00:00')) return '07:00';
+    if (timePart.startsWith('00:00')) return '';
     if (timePart && timePart.length >= 5 && /^\d{2}:\d{2}/.test(timePart)) return timePart.substring(0, 5);
   }
   if (/^\d{2}:\d{2}/.test(str)) {
@@ -1156,33 +1156,41 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                         {ceremonyColumns.map((col) => {
                           const colDate = col.tanggal;
 
-                          // 1. Exact date match
-                          let matchedRecord = empCeremonies.find((c) => {
+                          // 1. Exact date match (prioritizing empRecordUpacaras which has info.tanggal)
+                          let matchedRecord = empRecordUpacaras.find((r) => {
+                            const rDate = String(r.tanggal || r.info?.tanggal || '').substring(0, 10);
+                            return rDate === colDate;
+                          }) || empCeremonies.find((c) => {
                             const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
                             return cDate === colDate;
-                          }) || empRecordUpacaras.find((r) => {
-                            const rDate = String(r.tanggal || '').substring(0, 10);
-                            return rDate === colDate;
                           });
 
                           // 2. Fallback for routine 17-an column if attendance in that month was on adjacent date
                           if (!matchedRecord && col.isRoutine) {
-                            matchedRecord = empCeremonies.find((c) => {
+                            matchedRecord = empRecordUpacaras.find((r) => {
+                              const rDate = String(r.tanggal || r.info?.tanggal || '').substring(0, 10);
+                              const rMonth = parseInt(rDate.substring(5, 7), 10);
+                              if (rMonth !== col.month) return false;
+                              return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === rDate);
+                            }) || empCeremonies.find((c) => {
                               const cDate = String(c.tanggal || c.created_at || '').substring(0, 10);
                               const cMonth = parseInt(cDate.substring(5, 7), 10);
                               if (cMonth !== col.month) return false;
                               return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === cDate);
-                            }) || empRecordUpacaras.find((r) => {
-                              const rDate = String(r.tanggal || '').substring(0, 10);
-                              const rMonth = parseInt(rDate.substring(5, 7), 10);
-                              if (rMonth !== col.month) return false;
-                              return !ceremonyColumns.some((other) => other.key !== col.key && other.tanggal === rDate);
                             });
                           }
 
                           const isAttended = Boolean(matchedRecord);
                           const displayTime = isAttended
-                            ? (formatJamMasuk(matchedRecord.created_at || matchedRecord.info?.created_at || matchedRecord.info?.masuk || matchedRecord.info?.jam || matchedRecord.tanggal) || '07:00')
+                            ? (
+                                formatJamMasuk(matchedRecord.info?.tanggal) ||
+                                formatJamMasuk(matchedRecord.created_at) ||
+                                formatJamMasuk(matchedRecord.info?.created_at) ||
+                                formatJamMasuk(matchedRecord.info?.masuk) ||
+                                formatJamMasuk(matchedRecord.info?.jam) ||
+                                formatJamMasuk(matchedRecord.tanggal) ||
+                                '07:00'
+                              )
                             : '-';
 
                           return (
@@ -1266,7 +1274,14 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                   <span style={{ fontSize: '0.85rem', color: '#15803d' }}>Jam Masuk:</span>
                   <strong style={{ fontSize: '0.85rem', color: '#14532d' }}>
                     {selectedCell.isUpacara 
-                      ? (formatJamMasuk(selectedCell.record.created_at || selectedCell.record.info?.created_at || selectedCell.record.info?.masuk || selectedCell.record.info?.jam || selectedCell.record.tanggal) || '07:00 WIB')
+                      ? ((formatJamMasuk(selectedCell.record.info?.tanggal) ||
+                          formatJamMasuk(selectedCell.record.created_at) ||
+                          formatJamMasuk(selectedCell.record.info?.created_at) ||
+                          formatJamMasuk(selectedCell.record.info?.masuk) ||
+                          formatJamMasuk(selectedCell.record.info?.jam) ||
+                          formatJamMasuk(selectedCell.record.tanggal))
+                          ? `${formatJamMasuk(selectedCell.record.info?.tanggal) || formatJamMasuk(selectedCell.record.created_at) || formatJamMasuk(selectedCell.record.info?.created_at) || formatJamMasuk(selectedCell.record.info?.masuk) || formatJamMasuk(selectedCell.record.info?.jam)} WIB`
+                          : 'Hadir')
                       : (selectedCell.record.info?.masuk || '-')}
                   </strong>
                 </div>

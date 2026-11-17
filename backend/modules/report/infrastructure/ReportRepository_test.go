@@ -303,21 +303,23 @@ func TestUpacaraRecordMappingAndCreatedAt(t *testing.T) {
 	j := tLocal.Format("15:04:05")
 	jamStr = &j
 
+	infoTanggal := tLocal.Format("2006-01-02T15:04:05")
+
 	rec := domain.RecordItem{
 		ID:        8,
-		Tanggal:   cleaned,
+		Tanggal:   rawTanggal,
 		Type:      "upacara",
 		CreatedAt: createdAtStr,
 		Info: map[string]interface{}{
-			"tanggal":    cleaned,
+			"tanggal":    infoTanggal,
 			"created_at": createdAtStr,
 			"masuk":      masukStr,
 			"jam":        jamStr,
 		},
 	}
 
-	if rec.Tanggal != "2026-10-28" {
-		t.Fatalf("Expected rec.Tanggal '2026-10-28', got '%s'", rec.Tanggal)
+	if rec.Tanggal != "2026-10-28T00:00:00+07:00" {
+		t.Fatalf("Expected rec.Tanggal '2026-10-28T00:00:00+07:00', got '%s'", rec.Tanggal)
 	}
 	if rec.CreatedAt == nil || *rec.CreatedAt != "2026-10-28 08:00:19.991" {
 		val := "<nil>"
@@ -326,8 +328,8 @@ func TestUpacaraRecordMappingAndCreatedAt(t *testing.T) {
 		}
 		t.Fatalf("Expected rec.CreatedAt '2026-10-28 08:00:19.991', got '%s'", val)
 	}
-	if rec.Info["tanggal"] != "2026-10-28" {
-		t.Fatalf("Expected rec.Info.tanggal '2026-10-28', got '%v'", rec.Info["tanggal"])
+	if rec.Info["tanggal"] != "2026-10-28T08:00:19" {
+		t.Fatalf("Expected rec.Info.tanggal '2026-10-28T08:00:19', got '%v'", rec.Info["tanggal"])
 	}
 	if rec.Info["jam"] == nil || *rec.Info["jam"].(*string) != "08:00:19" {
 		t.Fatalf("Expected rec.Info.jam '08:00:19', got '%v'", rec.Info["jam"])
