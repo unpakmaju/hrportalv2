@@ -1182,7 +1182,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
 
                           const isAttended = Boolean(matchedRecord);
                           const displayTime = isAttended
-                            ? (formatJamMasuk(matchedRecord.created_at || matchedRecord.tanggal || matchedRecord.info?.masuk) || '07:00')
+                            ? (formatJamMasuk(matchedRecord.created_at || matchedRecord.info?.created_at || matchedRecord.info?.masuk || matchedRecord.info?.jam || matchedRecord.tanggal) || '07:00')
                             : '-';
 
                           return (
@@ -1266,7 +1266,7 @@ export const ReportPage = ({ globalPeriodType = 'cutoff', onPeriodTypeChange }) 
                   <span style={{ fontSize: '0.85rem', color: '#15803d' }}>Jam Masuk:</span>
                   <strong style={{ fontSize: '0.85rem', color: '#14532d' }}>
                     {selectedCell.isUpacara 
-                      ? (formatJamMasuk(selectedCell.record.created_at || selectedCell.record.tanggal) || '07:00 WIB')
+                      ? (formatJamMasuk(selectedCell.record.created_at || selectedCell.record.info?.created_at || selectedCell.record.info?.masuk || selectedCell.record.info?.jam || selectedCell.record.tanggal) || '07:00 WIB')
                       : (selectedCell.record.info?.masuk || '-')}
                   </strong>
                 </div>

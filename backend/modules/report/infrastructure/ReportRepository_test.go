@@ -267,3 +267,69 @@ func TestIdentifierMatchingAndCrossRecordRetrieval(t *testing.T) {
 		t.Fatalf("Expected 2 records collected, got %d", len(recs))
 	}
 }
+
+func TestUpacaraRecordMappingAndCreatedAt(t *testing.T) {
+	cleanDate := func(dStr string) string {
+		clean := strings.TrimSpace(dStr)
+		if idx := strings.Index(clean, "T"); idx != -1 {
+			clean = clean[:idx]
+		}
+		if idx := strings.Index(clean, " "); idx != -1 {
+			clean = clean[:idx]
+		}
+		return clean
+	}
+
+	rawTanggal := "2026-10-28T00:00:00+07:00"
+	cleaned := cleanDate(rawTanggal)
+	if cleaned != "2026-10-28" {
+		t.Fatalf("Expected clean date '2026-10-28', got '%s'", cleaned)
+	}
+
+	createdAtTime, err := time.ParseInLocation("2006-01-02 15:04:05.999", "2026-10-28 08:00:19.991", time.Local)
+	if err != nil {
+		t.Fatalf("Failed to parse sample time: %v", err)
+	}
+
+	var createdAtStr, masukStr, jamStr *string
+	tLocal := createdAtTime.In(time.Local)
+	s := tLocal.Format("2006-01-02 15:04:05")
+	if tLocal.Nanosecond() != 0 {
+		s = strings.TrimRight(strings.TrimRight(tLocal.Format("2006-01-02 15:04:05.000"), "0"), ".")
+	}
+	createdAtStr = &s
+	m := tLocal.Format("2006-01-02 15:04:05")
+	masukStr = &m
+	j := tLocal.Format("15:04:05")
+	jamStr = &j
+
+	rec := domain.RecordItem{
+		ID:        8,
+		Tanggal:   cleaned,
+		Type:      "upacara",
+		CreatedAt: createdAtStr,
+		Info: map[string]interface{}{
+			"tanggal":    cleaned,
+			"created_at": createdAtStr,
+			"masuk":      masukStr,
+			"jam":        jamStr,
+		},
+	}
+
+	if rec.Tanggal != "2026-10-28" {
+		t.Fatalf("Expected rec.Tanggal '2026-10-28', got '%s'", rec.Tanggal)
+	}
+	if rec.CreatedAt == nil || *rec.CreatedAt != "2026-10-28 08:00:19.991" {
+		val := "<nil>"
+		if rec.CreatedAt != nil {
+			val = *rec.CreatedAt
+		}
+		t.Fatalf("Expected rec.CreatedAt '2026-10-28 08:00:19.991', got '%s'", val)
+	}
+	if rec.Info["tanggal"] != "2026-10-28" {
+		t.Fatalf("Expected rec.Info.tanggal '2026-10-28', got '%v'", rec.Info["tanggal"])
+	}
+	if rec.Info["jam"] == nil || *rec.Info["jam"].(*string) != "08:00:19" {
+		t.Fatalf("Expected rec.Info.jam '08:00:19', got '%v'", rec.Info["jam"])
+	}
+}

@@ -41,10 +41,11 @@ type RekapLaporanBulanan struct {
 // }
 
 type RecordItem struct {
-	ID      uint                   `json:"id"`
-	Tanggal string                 `json:"tanggal"`
-	Type    string                 `json:"type"`
-	Info    map[string]interface{} `json:"info"`
+	ID        uint                   `json:"id"`
+	Tanggal   string                 `json:"tanggal"`
+	Type      string                 `json:"type"`
+	Info      map[string]interface{} `json:"info"`
+	CreatedAt *string                `json:"created_at,omitempty"`
 }
 
 type LaporanPenggunaMerged struct {
@@ -55,9 +56,10 @@ type LaporanPenggunaMerged struct {
 }
 
 type FlatRecordItem struct {
-	ID       uint                   `json:"id"`
-	Tanggal  string                 `json:"tanggal"`
-	Type     string                 `json:"type"`
-	Info     map[string]interface{} `json:"info"`
-	Pengguna interface{}            `json:"pengguna"`
+	ID        uint                   `json:"id"`
+	Tanggal   string                 `json:"tanggal"`
+	Type      string                 `json:"type"`
+	Info      map[string]interface{} `json:"info"`
+	Pengguna  interface{}            `json:"pengguna"`
+	CreatedAt *string                `json:"created_at,omitempty"`
 }

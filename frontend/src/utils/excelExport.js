@@ -415,7 +415,14 @@ function parseDateParts(str) {
  */
 function extractCeremonyTime(record) {
   if (!record) return '07:00';
-  const candidates = [record.created_at, record.jam_masuk, record.jam, record.info?.masuk];
+  const candidates = [
+    record.created_at,
+    record.info?.created_at,
+    record.info?.masuk,
+    record.info?.jam,
+    record.jam_masuk,
+    record.jam,
+  ];
   for (const c of candidates) {
     if (!c || typeof c !== 'string') continue;
     if (c.includes(' ')) {

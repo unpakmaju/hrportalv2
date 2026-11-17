@@ -1075,7 +1075,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 		}
 	}
 
-	parseDate := func(dStr string) (time.Time, error) {
+	cleanDate := func(dStr string) string {
 		clean := strings.TrimSpace(dStr)
 		if idx := strings.Index(clean, "T"); idx != -1 {
 			clean = clean[:idx]
@@ -1083,7 +1083,11 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 		if idx := strings.Index(clean, " "); idx != -1 {
 			clean = clean[:idx]
 		}
-		return time.Parse("2006-01-02", clean)
+		return clean
+	}
+
+	parseDate := func(dStr string) (time.Time, error) {
+		return time.Parse("2006-01-02", cleanDate(dStr))
 	}
 
 	for _, a := range absens {
@@ -1097,9 +1101,10 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			keluarStr = &s
 		}
 		rec := domain.RecordItem{
-			ID:      a.ID,
-			Tanggal: a.Tanggal,
-			Type:    "absen",
+			ID:        a.ID,
+			Tanggal:   cleanDate(a.Tanggal),
+			Type:      "absen",
+			CreatedAt: masukStr,
 			Info: map[string]interface{}{
 				"masuk":  masukStr,
 				"keluar": keluarStr,
@@ -1111,7 +1116,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 	for _, iz := range izins {
 		rec := domain.RecordItem{
 			ID:      iz.ID,
-			Tanggal: iz.TanggalPengajuan,
+			Tanggal: cleanDate(iz.TanggalPengajuan),
 			Type:    "izin",
 			Info: map[string]interface{}{
 				"tujuan": iz.Tujuan,
@@ -1171,12 +1176,30 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 	}
 
 	for _, u := range upacaras {
+		tglClean := cleanDate(u.Tanggal)
+		var createdAtStr, masukStr, jamStr *string
+		if u.CreatedAt != nil {
+			tLocal := u.CreatedAt.In(time.Local)
+			s := tLocal.Format("2006-01-02 15:04:05")
+			if tLocal.Nanosecond() != 0 {
+				s = strings.TrimRight(strings.TrimRight(tLocal.Format("2006-01-02 15:04:05.000"), "0"), ".")
+			}
+			createdAtStr = &s
+			m := tLocal.Format("2006-01-02 15:04:05")
+			masukStr = &m
+			j := tLocal.Format("15:04:05")
+			jamStr = &j
+		}
 		rec := domain.RecordItem{
-			ID:      u.ID,
-			Tanggal: u.Tanggal,
-			Type:    "upacara",
+			ID:        u.ID,
+			Tanggal:   tglClean,
+			Type:      "upacara",
+			CreatedAt: createdAtStr,
 			Info: map[string]interface{}{
-				"tanggal": u.Tanggal,
+				"tanggal":    tglClean,
+				"created_at": createdAtStr,
+				"masuk":      masukStr,
+				"jam":        jamStr,
 			},
 		}
 		addRecord(u.Nip, u.Nidn, rec)
@@ -1292,11 +1315,12 @@ func (r *ReportRepository) GetFlatLaporanMergedParallel(ctx context.Context, tan
 	for _, m := range merged {
 		for _, rec := range m.Records {
 			flatList = append(flatList, domain.FlatRecordItem{
-				ID:       rec.ID,
-				Tanggal:  rec.Tanggal,
-				Type:     rec.Type,
-				Info:     rec.Info,
-				Pengguna: m.Pengguna,
+				ID:        rec.ID,
+				Tanggal:   rec.Tanggal,
+				Type:      rec.Type,
+				Info:      rec.Info,
+				Pengguna:  m.Pengguna,
+				CreatedAt: rec.CreatedAt,
 			})
 		}
 	}
