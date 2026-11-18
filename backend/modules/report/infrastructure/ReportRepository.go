@@ -129,7 +129,7 @@ func (r *ReportRepository) enrichPegawaiFromSimpeg(ctx context.Context, empMap m
 			Select("p.id, p.nip, p.nidn_nitk, p.nuptk, p.nama, p.email, u.nama_unit").
 			Joins("LEFT JOIN "+ppTable+" ON pp.pegawai_id = p.id AND pp.deleted_at IS NULL").
 			Joins("LEFT JOIN "+uTable+" ON u.kode_unit = pp.kode_unit").
-			Where("TRIM(p.nip) IN (?) OR TRIM(p.nidn_nitk) IN (?) OR TRIM(p.nuptk) IN (?)", keys, keys, keys).
+			Where("p.nip IN (?) OR p.nidn_nitk IN (?) OR p.nuptk IN (?)", keys, keys, keys).
 			Order("p.id, (pp.status_berlaku = 'BERLAKU') DESC, (pp.status = 'AKTIF') DESC, pp.created_at DESC").
 			Scan(&details).Error
 
@@ -137,7 +137,7 @@ func (r *ReportRepository) enrichPegawaiFromSimpeg(ctx context.Context, empMap m
 			_ = dbSimpeg.WithContext(ctx).
 				Table(tableName).
 				Select("p.id, p.nip, p.nidn_nitk, p.nuptk, p.nama, p.email, '' as nama_unit").
-				Where("TRIM(p.nip) IN (?) OR TRIM(p.nidn_nitk) IN (?) OR TRIM(p.nuptk) IN (?)", keys, keys, keys).
+				Where("p.nip IN (?) OR p.nidn_nitk IN (?) OR p.nuptk IN (?)", keys, keys, keys).
 				Scan(&details).Error
 		}
 	}
@@ -184,7 +184,7 @@ func (r *ReportRepository) enrichPegawaiFromSimpeg(ctx context.Context, empMap m
 			Select("m_dosen.NIDN, m_dosen.Nama_Dosen, m_fakultas.nama_fakultas, m_program_studi.nama_prodi").
 			Joins("LEFT JOIN "+fakTable+" ON m_fakultas.kode_fakultas = m_dosen.kode_fak").
 			Joins("LEFT JOIN "+prodiTable+" ON m_program_studi.kode_prodi = m_dosen.kode_prodi").
-			Where("TRIM(m_dosen.NIDN) IN (?)", simakKeys).
+			Where("m_dosen.NIDN IN (?)", simakKeys).
 			Scan(&dosens).Error
 	}
 
@@ -413,85 +413,87 @@ func (r *ReportRepository) enrichPegawaiFromSimpeg(ctx context.Context, empMap m
 	addRequested(requestedNip)
 	addRequested(requestedNidn)
 
-	// Targeted fallback: for any employee still missing a name, do targeted single lookup
-	for k, emp := range empMap {
-		cleanNama := strings.TrimSpace(emp.Nama)
-		if cleanNama == "" || cleanNama == emp.Nip || cleanNama == emp.Nidn || cleanNama == k {
-			searchTarget := strings.TrimSpace(emp.Nip)
-			if searchTarget == "" {
-				searchTarget = strings.TrimSpace(emp.Nidn)
-			}
-			if searchTarget == "" {
-				searchTarget = strings.TrimSpace(k)
-			}
-			if searchTarget == "" {
-				continue
-			}
+	// Targeted fallback: only run for specific single requested user if still missing a name
+	if requestedNip != "" || requestedNidn != "" {
+		for k, emp := range empMap {
+			cleanNama := strings.TrimSpace(emp.Nama)
+			if cleanNama == "" || cleanNama == emp.Nip || cleanNama == emp.Nidn || cleanNama == k {
+				searchTarget := strings.TrimSpace(emp.Nip)
+				if searchTarget == "" {
+					searchTarget = strings.TrimSpace(emp.Nidn)
+				}
+				if searchTarget == "" {
+					searchTarget = strings.TrimSpace(k)
+				}
+				if searchTarget == "" {
+					continue
+				}
 
-			var singleDetail simpegDetail
-			if dbSimpeg != nil {
-				_ = dbSimpeg.WithContext(ctx).Table(tableName).
-					Select("p.id, p.nip, p.nidn_nitk, p.nuptk, p.nama, p.email, u.nama_unit").
-					Joins("LEFT JOIN "+ppTable+" ON pp.pegawai_id = p.id AND pp.deleted_at IS NULL").
-					Joins("LEFT JOIN "+uTable+" ON u.kode_unit = pp.kode_unit").
-					Where("p.nip = ? OR p.nidn_nitk = ? OR p.nuptk = ? OR p.nip LIKE ? OR p.nidn_nitk LIKE ? OR p.nuptk LIKE ?",
-						searchTarget, searchTarget, searchTarget,
-						"%"+searchTarget+"%", "%"+searchTarget+"%", "%"+searchTarget+"%").
-					Order("p.id, (pp.status_berlaku = 'BERLAKU') DESC, (pp.status = 'AKTIF') DESC, pp.created_at DESC").
-					First(&singleDetail).Error
-
-				if singleDetail.Nama == nil || strings.TrimSpace(*singleDetail.Nama) == "" {
+				var singleDetail simpegDetail
+				if dbSimpeg != nil {
 					_ = dbSimpeg.WithContext(ctx).Table(tableName).
-						Select("p.id, p.nip, p.nidn_nitk, p.nuptk, p.nama, p.email, '' as nama_unit").
+						Select("p.id, p.nip, p.nidn_nitk, p.nuptk, p.nama, p.email, u.nama_unit").
+						Joins("LEFT JOIN "+ppTable+" ON pp.pegawai_id = p.id AND pp.deleted_at IS NULL").
+						Joins("LEFT JOIN "+uTable+" ON u.kode_unit = pp.kode_unit").
 						Where("p.nip = ? OR p.nidn_nitk = ? OR p.nuptk = ? OR p.nip LIKE ? OR p.nidn_nitk LIKE ? OR p.nuptk LIKE ?",
 							searchTarget, searchTarget, searchTarget,
 							"%"+searchTarget+"%", "%"+searchTarget+"%", "%"+searchTarget+"%").
-						First(&singleDetail).Error
-				}
-			}
+						Order("p.id, (pp.status_berlaku = 'BERLAKU') DESC, (pp.status = 'AKTIF') DESC, pp.created_at DESC").
+						Limit(1).Scan(&singleDetail)
 
-			// If still not found, check m_dosen
-			if (singleDetail.Nama == nil || strings.TrimSpace(*singleDetail.Nama) == "") && simakDB != nil {
-				var dos dosenDetail
-				_ = simakDB.WithContext(ctx).Table(dosenTable).
-					Select("m_dosen.NIDN, m_dosen.Nama_Dosen, m_fakultas.nama_fakultas, m_program_studi.nama_prodi").
-					Joins("LEFT JOIN "+fakTable+" ON m_fakultas.kode_fakultas = m_dosen.kode_fak").
-					Joins("LEFT JOIN "+prodiTable+" ON m_program_studi.kode_prodi = m_dosen.kode_prodi").
-					Where("m_dosen.NIDN = ? OR m_dosen.NIDN LIKE ?", searchTarget, "%"+searchTarget+"%").
-					First(&dos).Error
-				if dos.NamaDosen != "" {
-					namaD := strings.TrimSpace(dos.NamaDosen)
-					nidnD := strings.TrimSpace(dos.Nidn)
-					singleDetail.Nama = &namaD
-					singleDetail.Nidn = &nidnD
-					if dos.NamaFakultas != nil {
-						fStr := strings.TrimSpace(*dos.NamaFakultas)
-						emp.Fakultas = &fStr
-					}
-					if dos.NamaProdi != nil {
-						pStr := strings.TrimSpace(*dos.NamaProdi)
-						emp.Prodi = &pStr
+					if singleDetail.Nama == nil || strings.TrimSpace(*singleDetail.Nama) == "" {
+						_ = dbSimpeg.WithContext(ctx).Table(tableName).
+							Select("p.id, p.nip, p.nidn_nitk, p.nuptk, p.nama, p.email, '' as nama_unit").
+							Where("p.nip = ? OR p.nidn_nitk = ? OR p.nuptk = ? OR p.nip LIKE ? OR p.nidn_nitk LIKE ? OR p.nuptk LIKE ?",
+								searchTarget, searchTarget, searchTarget,
+								"%"+searchTarget+"%", "%"+searchTarget+"%", "%"+searchTarget+"%").
+							Limit(1).Scan(&singleDetail)
 					}
 				}
-			}
 
-			if singleDetail.Nama != nil && strings.TrimSpace(*singleDetail.Nama) != "" {
-				emp.Nama = strings.TrimSpace(*singleDetail.Nama)
-				if singleDetail.Nip != nil && strings.TrimSpace(*singleDetail.Nip) != "" {
-					emp.Nip = strings.TrimSpace(*singleDetail.Nip)
+				// If still not found, check m_dosen
+				if (singleDetail.Nama == nil || strings.TrimSpace(*singleDetail.Nama) == "") && simakDB != nil {
+					var dos dosenDetail
+					_ = simakDB.WithContext(ctx).Table(dosenTable).
+						Select("m_dosen.NIDN, m_dosen.Nama_Dosen, m_fakultas.nama_fakultas, m_program_studi.nama_prodi").
+						Joins("LEFT JOIN "+fakTable+" ON m_fakultas.kode_fakultas = m_dosen.kode_fak").
+						Joins("LEFT JOIN "+prodiTable+" ON m_program_studi.kode_prodi = m_dosen.kode_prodi").
+						Where("m_dosen.NIDN = ? OR m_dosen.NIDN LIKE ?", searchTarget, "%"+searchTarget+"%").
+						Limit(1).Scan(&dos)
+					if dos.NamaDosen != "" {
+						namaD := strings.TrimSpace(dos.NamaDosen)
+						nidnD := strings.TrimSpace(dos.Nidn)
+						singleDetail.Nama = &namaD
+						singleDetail.Nidn = &nidnD
+						if dos.NamaFakultas != nil {
+							fStr := strings.TrimSpace(*dos.NamaFakultas)
+							emp.Fakultas = &fStr
+						}
+						if dos.NamaProdi != nil {
+							pStr := strings.TrimSpace(*dos.NamaProdi)
+							emp.Prodi = &pStr
+						}
+					}
 				}
-				if singleDetail.Nidn != nil && strings.TrimSpace(*singleDetail.Nidn) != "" {
-					emp.Nidn = strings.TrimSpace(*singleDetail.Nidn)
+
+				if singleDetail.Nama != nil && strings.TrimSpace(*singleDetail.Nama) != "" {
+					emp.Nama = strings.TrimSpace(*singleDetail.Nama)
+					if singleDetail.Nip != nil && strings.TrimSpace(*singleDetail.Nip) != "" {
+						emp.Nip = strings.TrimSpace(*singleDetail.Nip)
+					}
+					if singleDetail.Nidn != nil && strings.TrimSpace(*singleDetail.Nidn) != "" {
+						emp.Nidn = strings.TrimSpace(*singleDetail.Nidn)
+					}
+					if emp.Email == nil {
+						emp.Email = singleDetail.Email
+					}
+					if (emp.UnitKerja == nil || *emp.UnitKerja == "") && singleDetail.NamaUnit != nil && strings.TrimSpace(*singleDetail.NamaUnit) != "" {
+						uStr := strings.TrimSpace(*singleDetail.NamaUnit)
+						emp.UnitKerja = &uStr
+						emp.Unit = &uStr
+					}
+					empMap[k] = emp
 				}
-				if emp.Email == nil {
-					emp.Email = singleDetail.Email
-				}
-				if (emp.UnitKerja == nil || *emp.UnitKerja == "") && singleDetail.NamaUnit != nil && strings.TrimSpace(*singleDetail.NamaUnit) != "" {
-					uStr := strings.TrimSpace(*singleDetail.NamaUnit)
-					emp.UnitKerja = &uStr
-					emp.Unit = &uStr
-				}
-				empMap[k] = emp
 			}
 		}
 	}
@@ -879,6 +881,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			return
 		}
 		q := db.WithContext(ctx).Model(&attendanceDomain.Absen{}).
+			Select("id, nidn, nip, nama_pegawai, unit, fakultas, prodi, tanggal, absen_masuk, absen_keluar").
 			Where("tanggal >= ? AND tanggal <= ? AND absen_masuk IS NOT NULL", tanggalMulai, tanggalAkhir)
 		if cleanFilterNip != "" && cleanFilterNidn != "" {
 			q = q.Where("(nip = ? OR nidn = ?)", cleanFilterNip, cleanFilterNidn)
@@ -897,6 +900,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			return
 		}
 		q := db.WithContext(ctx).Model(&permissionDomain.Izin{}).
+			Select("id, nip, nidn, nama_pemohon, unit, fakultas, prodi, tanggal_pengajuan, tujuan, status").
 			Where("tanggal_pengajuan >= ? AND tanggal_pengajuan <= ? AND LOWER(TRIM(status)) = 'terima sdm'", tanggalMulai, tanggalAkhir)
 		if cleanFilterNip != "" && cleanFilterNidn != "" {
 			q = q.Where("(nip = ? OR nidn = ?)", cleanFilterNip, cleanFilterNidn)
@@ -915,6 +919,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			return
 		}
 		q := db.WithContext(ctx).Model(&leaveDomain.Cuti{}).
+			Select("id, nip, nidn, nama_pemohon, unit, fakultas, prodi, tanggal_mulai, tanggal_akhir, tujuan, status").
 			Where("tanggal_mulai <= ? AND tanggal_akhir >= ? AND LOWER(TRIM(status)) = 'terima sdm'", tanggalAkhir, tanggalMulai)
 		if cleanFilterNip != "" && cleanFilterNidn != "" {
 			q = q.Where("(nip = ? OR nidn = ?)", cleanFilterNip, cleanFilterNidn)
@@ -933,6 +938,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			return
 		}
 		q := db.WithContext(ctx).Model(&sppdDomain.Sppd{}).
+			Select("id, nip, nidn, nama_pemohon, unit, fakultas, prodi, tanggal_berangkat, tanggal_kembali, keterangan, tujuan, status").
 			Where("tanggal_berangkat <= ? AND tanggal_kembali >= ? AND LOWER(TRIM(status)) = 'terima sdm'", tanggalAkhir, tanggalMulai)
 		if cleanFilterNip != "" && cleanFilterNidn != "" {
 			q = q.Where("(nip = ? OR nidn = ? OR id IN (SELECT id_sppd FROM sppd_anggota WHERE nip = ? OR nidn = ?))", cleanFilterNip, cleanFilterNidn, cleanFilterNip, cleanFilterNidn)
@@ -951,7 +957,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			return
 		}
 		qSa := db.WithContext(ctx).Model(&sppdDomain.SppdAnggota{}).
-			Select("sppd_anggota.*").
+			Select("sppd_anggota.id, sppd_anggota.id_sppd, sppd_anggota.nip, sppd_anggota.nidn, sppd_anggota.nama, sppd_anggota.unit, sppd_anggota.fakultas, sppd_anggota.prodi").
 			Joins("JOIN sppd ON sppd.id = sppd_anggota.id_sppd").
 			Where("sppd.tanggal_berangkat <= ? AND sppd.tanggal_kembali >= ? AND LOWER(TRIM(sppd.status)) = 'terima sdm'", tanggalAkhir, tanggalMulai)
 		if cleanFilterNip != "" && cleanFilterNidn != "" {
@@ -971,6 +977,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			return
 		}
 		qu := db.WithContext(ctx).Table("absen_upacara").
+			Select("id, nidn, nip, nama, unit, fakultas, prodi, tanggal, created_at").
 			Where("tanggal >= ? AND tanggal <= ?", tanggalMulai, tanggalAkhir)
 		if cleanFilterNip != "" && cleanFilterNidn != "" {
 			qu = qu.Where("(nip = ? OR nidn = ?)", cleanFilterNip, cleanFilterNidn)
@@ -1204,6 +1211,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 
 	var results []domain.LaporanPenggunaMerged
 	resultIndexByKode := make(map[string]int)
+	seenRecKeysByKode := make(map[string]map[string]bool)
 
 	for k, p := range empMap {
 		kode := "NA"
@@ -1257,17 +1265,19 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 		}
 
 		if idx, exists := resultIndexByKode[kode]; exists && kode != "NA" {
-			// Merge records
+			// Fast O(1) merge records using hash set
+			seenMap := seenRecKeysByKode[kode]
+			if seenMap == nil {
+				seenMap = make(map[string]bool, len(results[idx].Records))
+				for _, ex := range results[idx].Records {
+					seenMap[fmt.Sprintf("%s-%d-%s", ex.Type, ex.ID, ex.Tanggal)] = true
+				}
+				seenRecKeysByKode[kode] = seenMap
+			}
 			for _, rItem := range recs {
 				rKey := fmt.Sprintf("%s-%d-%s", rItem.Type, rItem.ID, rItem.Tanggal)
-				existingSeen := false
-				for _, ex := range results[idx].Records {
-					if fmt.Sprintf("%s-%d-%s", ex.Type, ex.ID, ex.Tanggal) == rKey {
-						existingSeen = true
-						break
-					}
-				}
-				if !existingSeen {
+				if !seenMap[rKey] {
+					seenMap[rKey] = true
 					results[idx].Records = append(results[idx].Records, rItem)
 				}
 			}
@@ -1282,6 +1292,7 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 				}
 				if (existingEmp.Fakultas == nil || *existingEmp.Fakultas == "") && p.Fakultas != nil && *p.Fakultas != "" {
 					existingEmp.Fakultas = p.Fakultas
+					existingEmp.Unit = p.Unit
 				}
 				if (existingEmp.Prodi == nil || *existingEmp.Prodi == "") && p.Prodi != nil && *p.Prodi != "" {
 					existingEmp.Prodi = p.Prodi
@@ -1290,6 +1301,11 @@ func (r *ReportRepository) GetLaporanMergedParallel(ctx context.Context, tanggal
 			}
 		} else {
 			resultIndexByKode[kode] = len(results)
+			seenMap := make(map[string]bool, len(recs))
+			for _, rItem := range recs {
+				seenMap[fmt.Sprintf("%s-%d-%s", rItem.Type, rItem.ID, rItem.Tanggal)] = true
+			}
+			seenRecKeysByKode[kode] = seenMap
 			results = append(results, domain.LaporanPenggunaMerged{
 				Kode:     kode,
 				Pengguna: p,

@@ -51,7 +51,7 @@ func (r *AttendanceRepository) GetHistoryByNip(ctx context.Context, nip string, 
 	}
 	var items []domain.Absen
 
-	query := r.db.WithContext(ctx).Debug().Model(&domain.Absen{})
+	query := r.db.WithContext(ctx).Model(&domain.Absen{})
 
 	if nip != "" && nidn != "" {
 		query = query.Where("(nip = ? OR nidn = ?)", nip, nidn)
